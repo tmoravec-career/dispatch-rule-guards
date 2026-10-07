@@ -161,7 +161,7 @@ module StressRun
     return "step 1 (#{first['vus']} VUs) sent no requests" unless first["requests"].positive?
     return nil if first["error_rate"].to_f < MISCONFIGURED_ERROR_RATE
 
-    "#{(first['error_rate'] * 100).round(1)}% of step 1's #{first['requests']} requests failed "       "(#{first['vus']} VUs); check K6_API_TOKEN (an ops token), K6_BASE_URL and the app log"
+    "#{format('%.1f', first['error_rate'] * 100)}% of step 1's #{first['requests']} requests failed "       "(#{first['vus']} VUs); check K6_API_TOKEN (an ops token), K6_BASE_URL and the app log"
   end
 
   # k6 names the metric(s) whose abortOnFail threshold stopped the run:
