@@ -58,16 +58,28 @@ module Dispatch
     end
   end
 
-  # Parses JSON text, turning syntax errors into a malformed_json ValidationError.
+  UTF8_BOM = [0xEF, 0xBB, 0xBF].pack("C*").freeze
+
+  # Parses JSON text. The text must be valid UTF-8; a leading BOM (Windows PowerShell 5.1
+  # writes one) is stripped. Bad encoding and syntax errors become malformed_json at "$" (Q55).
   def self.parse_json(text, source: nil)
     require "json"
-    JSON.parse(text)
+    bytes = text.b
+    bytes = bytes.byteslice(UTF8_BOM.bytesize..) if bytes.start_with?(UTF8_BOM)
+    utf8 = bytes.force_encoding(Encoding::UTF_8)
+    raise_malformed("the file is not valid UTF-8", source) unless utf8.valid_encoding?
+
+    JSON.parse(utf8)
   rescue JSON::ParserError => e
-    raise ConfigError.new([ValidationError.new("malformed_json", "$", e.message.lines.first.to_s.strip)], source: source)
+    raise_malformed(e.message.scrub.lines.first.to_s.strip, source)
+  end
+
+  def self.raise_malformed(message, source)
+    raise ConfigError.new([ValidationError.new("malformed_json", "$", message)], source: source)
   end
 
   def self.read_json_file(path)
-    parse_json(File.read(path, encoding: "UTF-8"), source: path)
+    parse_json(File.binread(path), source: path)
   end
 
   # Non-negative integer, excluding booleans (which are not Integers in Ruby anyway).
@@ -75,7 +87,12 @@ module Dispatch
     value.is_a?(Integer) && value >= 0
   end
 
+  # A JSON number that is finite: 1e400 parses to Infinity and must be rejected (Q55).
+  def self.finite_number?(value)
+    value.is_a?(Integer) || (value.is_a?(Float) && value.finite?)
+  end
+
   def self.non_empty_string?(value)
-    value.is_a?(String) && !value.strip.empty?
+    value.is_a?(String) && value.valid_encoding? && !value.strip.empty?
   end
 end

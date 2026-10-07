@@ -137,6 +137,30 @@ class RulesConfigTest < Minitest::Test
     assert_equal [["malformed_json", "$"]], errors_for("{not json")
   end
 
+  # Q55: not valid UTF-8 -> malformed_json at "$"; a leading BOM is accepted.
+  def test_non_utf8_text_is_malformed_json
+    assert_equal [["malformed_json", "$"]], errors_for('{"rules": [{"id": "caf' + "\xE9".b + '"}]}')
+  end
+
+  def test_non_utf8_file_is_malformed_json_naming_the_file
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "latin1.json")
+      File.binwrite(path, '{"rules": [], "x": "' + "\xE9".b + '"}')
+      error = assert_raises(Dispatch::ConfigError) { Dispatch::RulesConfig.load_file(path) }
+      assert_equal [["malformed_json", "$"]], error.errors.map { |e| [e.code, e.path] }
+      assert_includes error.message, path
+    end
+  end
+
+  def test_leading_bom_is_stripped
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "bom.json")
+      File.binwrite(path, "\xEF\xBB\xBF".b + JSON.generate(DispatchFixtures::BASE_RULES))
+      assert_equal 7, Dispatch::RulesConfig.load_file(path).rules.size
+    end
+    assert_equal 0, Dispatch::RulesConfig.parse("﻿{\"rules\": []}").rules.size
+  end
+
   def test_non_object_root
     assert_equal [["invalid_value", "$"]], errors_for("[]")
   end
