@@ -39,7 +39,7 @@ ruby -Ilib bin/rule_diff --base config/dispatch_rules.json \
                          --proposed examples/dispatch_rules.proposed.json
 ```
 
-Expected result: **exit 1**, with two policies breached. Only the exit code and "at least one newly stranded claim" are part of the spec (Q53, Q54). The exact numbers below come from the current generator and roster.
+Expected result: **exit 1**, with two policies breached. Only the exit code and "at least one newly stranded claim" are part of the spec (Q53, Q54). The exact numbers below come from the current generator and roster. `test/dispatch/shipped_data_test.rb` fails if the breach rows, the counts or the newly unassigned claims below stop matching a fresh run.
 
 | Policy | Threshold | Actual |
 |---|---|---|
@@ -49,7 +49,7 @@ Expected result: **exit 1**, with two policies breached. Only the exit code and 
 - **Replayed:** 200 claims.
 - **Rerouted:** 8 claims (4.0%), which is within the 10% policy.
 - **Unassigned:** 16 under base, 17 under proposed. 184 of 200 claims are assigned under the base rules.
-- **Newly unassigned:** SIM-0012, SIM-0057 and SIM-0082. These are NY and CO autos worth $60k–$99k that move to `luxury_auto`, where no adjuster is licensed.
+- **Newly unassigned:** SIM-0012, SIM-0057 and SIM-0082 (`luxury_auto`, `no_qualified_adjuster`). These are autos worth $60k–$99k that move to `luxury_auto` in states where no `luxury_vehicle` adjuster is licensed.
 - **Newly assigned (informational):** SIM-0159 and SIM-0166.
 - **Probe changes:** the same 4 as the demo.
 

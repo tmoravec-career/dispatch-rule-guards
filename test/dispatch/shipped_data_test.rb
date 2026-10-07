@@ -123,6 +123,24 @@ class ShippedDataTest < Minitest::Test
       assert_operator report["newly_unassigned"].size, :>=, 1
       assert_includes report["policy_breaches"].map { |b| b["policy"] }, "max_new_unassigned"
       assert_equal [200, 42], report["summary"].values_at("replayed_claims", "seed")
+      assert_readme_matches(report)
     end
+  end
+
+  # examples/README.md quotes the realistic day's numbers; keep them true to a fresh run.
+  def assert_readme_matches(report)
+    section = File.read(root("examples/README.md"))[/^## Realistic day.*?(?=^## |\z)/m]
+    refute_nil section, "examples/README.md has no Realistic day section"
+    report["policy_breaches"].each do |b|
+      assert_includes section, "| `#{b['policy']}` | #{b['threshold']} | #{b['actual']} |"
+    end
+    assert_equal report["policy_breaches"].size, section.scan(/^\| `max_\w+` \|/).size, "README lists extra breaches"
+    summary = report["summary"]
+    assert_includes section, "#{report['rerouted'].size} claims (#{summary['reroute_pct']}%)"
+    assert_includes section, "#{summary['unassigned_base']} under base, #{summary['unassigned_proposed']} under proposed"
+    newly = section[/^- \*\*Newly unassigned:\*\*.*$/]
+    assert_equal report["newly_unassigned"].map { |c| c["claim_number"] }.sort, newly.scan(/SIM-\d+/).sort
+    reasons = report["newly_unassigned"].map { |c| "`#{c['reason_code']}`" }.uniq
+    reasons.each { |r| assert_includes newly, r }
   end
 end
