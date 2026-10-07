@@ -121,3 +121,17 @@ Also a multi-stage, non-root Dockerfile and a compose file with `app`, `test` an
 | 5 | qa-engineer | **PASS.** Used its single allowed k6 run to prove the last gap: with 500 ms of injected latency, k6 failed, and the audit still ran and saw `25 adjusters checked, 0 over capacity`. |
 
 **What can only be proven on GitHub:** the first real CI run, the Docker build, the sticky PR comment on a real merge commit, and the nightly profiles at full scale (20 to 320 VUs).
+
+---
+
+## Publishing and the first real CI run
+
+**Outcome:** on its **first real run on GitHub, CI passed every job** for both PRs that carry the workflow (#37 and #38): engine tests, contract tests, app tests, Cucumber (331 scenarios), k6 smoke with the capacity audit, the Docker build with a compose smoke run, and the rule-change gate. The gate posted its sticky report on the PR, correctly PASS because those PRs don't change the rules. The nightly jobs were skipped, as designed on a PR. These were the jobs phase 4 could only verify by reading, so the reading-based review held up.
+
+| Step | Who | What happened |
+|---|---|---|
+| 1 | orchestrator | Moved all 101 commits to the account's GitHub no-reply identity before the first push (backed up to a bundle first), and remapped the 34 commit hashes cited in the bug log. |
+| 2 | orchestrator | Pushed the six phase branches, created 33 GitHub issues from the bug log (31 closed with links to their fix commits, 2 deferred), and opened the five stacked phase PRs. |
+| 3 | orchestrator | **No CI ran at all.** Ruled out the workflow file (present, and `actionlint` was clean), the repo setting (enabled), the account (Actions ran on another repo that morning) and the triggers (open, reopen, new commit). |
+| 4 | **human** | Approved merging spec-only phase 1 into `main`, then a diagnostic. |
+| 5 | orchestrator | A 10-line `hello` workflow pushed to `main` ran immediately. **A new repo's Actions don't activate until a workflow runs on the default branch**, and the API never reports that. After that, the PR's real CI fired on the next trigger, and the diagnostic workflow was deleted. |
