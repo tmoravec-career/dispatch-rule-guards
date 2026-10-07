@@ -688,3 +688,4 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
   So are the Markdown PASS/FAIL headline, the "Newly assigned (informational)" subsection, and the one-line stdout summary when `--markdown-out` is given.
 - **Breach display.** If a rounded `actual` equals its threshold, show two decimals (e.g. `10.04`), so a breach never displays as "10.0 > 10".
 - **Markdown safety.** Table cells escape `|` and collapse newlines.
+- **M1 follow-up: probe identity is the probe claim.** After applying the Q56 retention rule, probes are deduplicated by **(field, value, probe claim)**. When two owners build an identical claim, it's one probe, and the proposed-sourced one is kept. Without this, the demo's `gte 50000` → `gt 50000` builds the same claim from the base and proposed rules and counts one boundary change twice. Owners that build *different* claims at the same value still each get a probe (L1, M1).
