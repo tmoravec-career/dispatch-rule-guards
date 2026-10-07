@@ -6,11 +6,11 @@ module ClaimsHelper
     "inclusion" => "Choose one of the listed options.",
     "invalid_value" => "Enter a valid value.",
     "not_an_integer" => "Enter whole dollars: cents must be .00.",
-    "out_of_range" => "Enter an amount of $0 or more.",
     "duplicate_claim_number" => "A claim with this number already exists."
   }.freeze
 
   MONEY_INVALID_MESSAGE = "Enter whole dollars, e.g. 12000, $12,000 or 12,000.00.".freeze
+  BELOW_MINIMUM_MESSAGE = "Enter an amount of $0 or more.".freeze
 
   def field_error_id(field)
     "claim_#{field}_error"
@@ -29,7 +29,16 @@ module ClaimsHelper
     code = form.errors.fetch(field)
     message = FIELD_ERROR_MESSAGES.fetch(code, FIELD_ERROR_MESSAGES["invalid_value"])
     message = MONEY_INVALID_MESSAGE if code == "invalid_value" && ClaimForm::MONEY_FIELDS.include?(field)
+    case form.out_of_range_bound(field)
+    when :minimum then message = BELOW_MINIMUM_MESSAGE
+    when :maximum then message = above_maximum_message
+    end
     tag.p(message, id: field_error_id(field), class: "field-error")
+  end
+
+  # BUG-018: names the limit, the largest whole-dollar amount JSON can carry exactly.
+  def above_maximum_message
+    "Enter an amount of at most #{money(Dispatch::ClaimInput::MAX_MONEY)}."
   end
 
   def money(dollars)

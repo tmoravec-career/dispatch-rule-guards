@@ -61,4 +61,16 @@ class ClaimFormTest < ActiveSupport::TestCase
     assert f.submit, f.errors.inspect
     assert_equal "CLM-F3", f.claim.claim_number
   end
+
+  test "out_of_range says which bound was crossed (BUG-018)" do
+    low = form("estimated_loss" => "-$500")
+    refute low.submit
+    assert_equal :minimum, low.out_of_range_bound("estimated_loss")
+
+    high = form("vehicle_value" => "99999999999999999999")
+    refute high.submit
+    assert_equal "out_of_range", high.errors["vehicle_value"]
+    assert_equal :maximum, high.out_of_range_bound("vehicle_value")
+    assert_nil high.out_of_range_bound("estimated_loss")
+  end
 end

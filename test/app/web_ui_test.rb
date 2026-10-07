@@ -69,4 +69,17 @@ class WebUiTest < ActionDispatch::IntegrationTest
     assert_includes response.body, 'aria-invalid="true"'
     refute Claim.exists?(claim_number: "CLM-W5")
   end
+
+  test "a too-large amount names the upper limit, and a negative one the lower (BUG-018)" do
+    post "/claims", params: { claim: { claim_number: "CLM-W6", line_of_business: "auto",
+                                       estimated_loss: "99999999999999999999", loss_state: "TX" } }
+    assert_response :unprocessable_entity
+    error = css_select("#claim_estimated_loss_error").sole.text
+    assert_includes error, "$9,007,199,254,740,991"
+    refute_includes error, "$0 or more"
+
+    post "/claims", params: { claim: { claim_number: "CLM-W6", line_of_business: "auto", estimated_loss: "-$5",
+                                       loss_state: "TX" } }
+    assert_includes css_select("#claim_estimated_loss_error").sole.text, "$0 or more"
+  end
 end

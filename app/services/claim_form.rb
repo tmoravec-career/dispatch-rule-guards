@@ -45,6 +45,14 @@ class ClaimForm
     values["cat_event"] == "1"
   end
 
+  # out_of_range covers both ends of a money field (Q58): :minimum for a negative amount,
+  # :maximum for one above Dispatch::ClaimInput::MAX_MONEY. Nil for any other error.
+  def out_of_range_bound(field)
+    return unless errors[field] == "out_of_range"
+
+    values[field].include?("-") ? :minimum : :maximum
+  end
+
   private
 
   # A blank text field or select is absent. The checkbox posts "1" when checked.
