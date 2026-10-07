@@ -15,7 +15,7 @@
 #
 # Plain Ruby, no bundle. Environment:
 #   K6_BASE_URL   default http://localhost:3000     K6_API_TOKEN  an ops token
-#   K6_BIN        the k6 executable (default: k6 on PATH, then C:/Program Files/k6/k6.exe)
+#   K6_BIN        the k6 executable (default: k6 on PATH; on Windows also C:/Program Files/k6/k6.exe)
 #   K6_VU_SCALE, K6_DURATION_SCALE, K6_RUN_ID       passed through to the script (local runs)
 # Options:
 #   --report PATH       default reports/k6/stress_report.json
@@ -76,10 +76,14 @@ module StressRun
     ERROR
   end
 
-  def k6_binary
-    candidates = [ENV["K6_BIN"], *ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).flat_map do |dir|
-      [File.join(dir, "k6"), File.join(dir, "k6.exe")]
-    end, "C:/Program Files/k6/k6.exe"].compact.reject(&:empty?)
+  # K6_BIN when set (and only it: an explicit binary never silently falls back), else k6 on
+  # PATH, else the Windows installer's default location.
+  def k6_binary(env = ENV)
+    explicit = env["K6_BIN"].to_s
+    return (File.file?(explicit) && File.executable?(explicit) ? explicit : nil) unless explicit.empty?
+
+    candidates = env.fetch("PATH", "").split(File::PATH_SEPARATOR).flat_map { |dir| [File.join(dir, "k6"), File.join(dir, "k6.exe")] }
+    candidates << "C:/Program Files/k6/k6.exe" if Gem.win_platform?
     candidates.find { |path| File.file?(path) && File.executable?(path) }
   end
 
