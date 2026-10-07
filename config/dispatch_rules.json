@@ -1,0 +1,141 @@
+{
+  "rules": [
+    {
+      "id": "cat_large_loss",
+      "priority": 10,
+      "queue": "cat_large_loss",
+      "required_skills": [
+        "cat",
+        "large_loss"
+      ],
+      "conditions": [
+        {
+          "field": "cat_event",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "estimated_loss",
+          "op": "gte",
+          "value": 50000
+        }
+      ]
+    },
+    {
+      "id": "luxury_auto",
+      "priority": 20,
+      "queue": "luxury_auto",
+      "required_skills": [
+        "luxury_vehicle"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "auto"
+        },
+        {
+          "field": "vehicle_value",
+          "op": "gte",
+          "value": 100000
+        }
+      ]
+    },
+    {
+      "id": "auto_fast_track",
+      "priority": 30,
+      "queue": "auto_fast_track",
+      "required_skills": [
+        "auto"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "auto"
+        },
+        {
+          "field": "estimated_loss",
+          "op": "lt",
+          "value": 5000
+        }
+      ]
+    },
+    {
+      "id": "auto_standard",
+      "priority": 40,
+      "queue": "auto_standard",
+      "required_skills": [
+        "auto"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "auto"
+        },
+        {
+          "field": "estimated_loss",
+          "op": "lte",
+          "value": 25000
+        }
+      ]
+    },
+    {
+      "id": "auto_complex",
+      "priority": 50,
+      "queue": "auto_complex",
+      "required_skills": [
+        "auto",
+        "large_loss"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "id": "coastal_property",
+      "priority": 60,
+      "queue": "coastal_property",
+      "required_skills": [
+        "property",
+        "cat"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "property"
+        },
+        {
+          "field": "loss_state",
+          "op": "in",
+          "value": [
+            "TX",
+            "FL",
+            "LA"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "property_standard",
+      "priority": 70,
+      "queue": "property_standard",
+      "required_skills": [
+        "property"
+      ],
+      "conditions": [
+        {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "property"
+        }
+      ]
+    }
+  ]
+}

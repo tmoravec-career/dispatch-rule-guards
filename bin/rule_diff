@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# Rule-change impact gate. Plain Ruby, no bundle, no web app:
+#   ruby -Ilib bin/rule_diff --base config/dispatch_rules.json --proposed examples/dispatch_rules.proposed.json
+# Run with --help for flags. Exit codes: 0 pass, 1 policy breach, 2 usage error or invalid input.
+
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+
+# Test hook: write $LOADED_FEATURES to this path on exit, so acceptance tests can prove
+# the gate never loads Rails or ActiveRecord.
+if (loaded_features_out = ENV["RULE_DIFF_LOADED_FEATURES_OUT"])
+  at_exit { File.write(loaded_features_out, $LOADED_FEATURES.join("\n")) }
+end
+
+require "dispatch/gate/cli"
+
+exit Dispatch::Gate::CLI.run(ARGV)

@@ -1,0 +1,79 @@
+[
+  {
+    "claim_number": "CLM-2001",
+    "line_of_business": "auto",
+    "estimated_loss": 12000,
+    "vehicle_value": 65000,
+    "cat_event": false,
+    "loss_state": "CA"
+  },
+  {
+    "claim_number": "CLM-2002",
+    "line_of_business": "auto",
+    "estimated_loss": 15000,
+    "vehicle_value": 72000,
+    "cat_event": false,
+    "loss_state": "CA"
+  },
+  {
+    "claim_number": "CLM-2003",
+    "line_of_business": "auto",
+    "estimated_loss": 9000,
+    "vehicle_value": 88000,
+    "cat_event": false,
+    "loss_state": "CA"
+  },
+  {
+    "claim_number": "CLM-2004",
+    "line_of_business": "auto",
+    "estimated_loss": 20000,
+    "vehicle_value": 120000,
+    "cat_event": false,
+    "loss_state": "CA"
+  },
+  {
+    "claim_number": "CLM-2005",
+    "line_of_business": "auto",
+    "estimated_loss": 14000,
+    "vehicle_value": 70000,
+    "cat_event": false,
+    "loss_state": "TX"
+  },
+  {
+    "claim_number": "CLM-2006",
+    "line_of_business": "property",
+    "estimated_loss": 50000,
+    "cat_event": true,
+    "loss_state": "TX"
+  },
+  {
+    "claim_number": "CLM-2007",
+    "line_of_business": "property",
+    "estimated_loss": 80000,
+    "cat_event": true,
+    "loss_state": "FL"
+  },
+  {
+    "claim_number": "CLM-2008",
+    "line_of_business": "auto",
+    "estimated_loss": 3000,
+    "vehicle_value": 22000,
+    "cat_event": false,
+    "loss_state": "NY"
+  },
+  {
+    "claim_number": "CLM-2009",
+    "line_of_business": "property",
+    "estimated_loss": 10000,
+    "cat_event": false,
+    "loss_state": "NY"
+  },
+  {
+    "claim_number": "CLM-2010",
+    "line_of_business": "auto",
+    "estimated_loss": 8000,
+    "vehicle_value": 30000,
+    "cat_event": false,
+    "loss_state": "AZ"
+  }
+]
