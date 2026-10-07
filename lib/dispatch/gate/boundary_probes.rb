@@ -16,17 +16,19 @@ module Dispatch
         @proposed = proposed
       end
 
-      # Sorted by field, value and owning rule. Probes are deduplicated per owning rule,
-      # field and value, never per value alone (Q55). The owning rule is identified by its
-      # source as well as its id: a base rule and a proposed rule can share an id but have
-      # different conditions, so each keeps its own probes built from its own conditions.
+      # Sorted by field, value and owning rule. A probe's identity is (field, value, probe
+      # claim) (Q56 M1 follow-up): owners that build different claims at the same value each
+      # get a probe, even a base and a proposed rule sharing an id (L1), so no rule's
+      # boundary is hidden by another's. Owners that build an identical claim share one
+      # probe, so one boundary change is never counted twice. Proposed thresholds come first,
+      # so the proposed-sourced probe is the one kept.
       def probes
         seen = {}
         thresholds.each do |rule, condition, source|
           whole_dollar_points(condition.value).each do |point|
-            key = [source, rule.id, condition.field, point]
-            seen[key] ||= Probe.new(condition.field, point, condition.value, rule.id, source,
-                                    probe_claim(rule, condition.field, point))
+            claim = probe_claim(rule, condition.field, point)
+            seen[[condition.field, point, claim.to_h]] ||=
+              Probe.new(condition.field, point, condition.value, rule.id, source, claim)
           end
         end
         seen.values.sort_by { |p| [p.field, p.value, p.rule_id, p.source.to_s] }
@@ -34,14 +36,15 @@ module Dispatch
 
       private
 
-      # [[rule, condition, :proposed | :base]]. Every numeric threshold in the proposed rules,
-      # plus base thresholds whose (field, value) the proposed rules no longer have: a
-      # threshold present in both is built from the proposed rule, since that is what will
-      # ship (Q29 follow-up); one that exists only in base still uses the base rule.
+      # [[rule, condition, :proposed | :base]], proposed first. Every numeric threshold in the
+      # proposed rules, plus each base threshold whose owning rule no longer has the same
+      # (field, op, value) in the proposed rules, including when that rule was deleted
+      # (Q56 M1). Another proposed rule sharing the number doesn't count: this rule's
+      # boundary moved, so it is probed from the base rule's own conditions.
       def thresholds
         proposed = numeric_conditions(@proposed).map { |rule, c| [rule, c, :proposed] }
-        shipped = proposed.map { |_, c, _| [c.field, c.value.to_r] }
-        base = numeric_conditions(@base).reject { |_, c| shipped.include?([c.field, c.value.to_r]) }
+        kept = proposed.map { |rule, c, _| [rule.id, c.field, c.op, c.value.to_r] }
+        base = numeric_conditions(@base).reject { |rule, c| kept.include?([rule.id, c.field, c.op, c.value.to_r]) }
         proposed + base.map { |rule, c| [rule, c, :base] }
       end
 

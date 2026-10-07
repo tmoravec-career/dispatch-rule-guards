@@ -19,6 +19,15 @@ class BoundaryProbesTest < Minitest::Test
     assert_equal [99_999, 100_000, 100_001], values(list, "vehicle_value")
   end
 
+  # Q56 M1 follow-up: the demo's gte -> gt keeps the base threshold (its op changed), but
+  # the base and proposed cat_large_loss rules build the identical claim, so 50000 is one
+  # probe, the proposed-sourced one.
+  def test_identical_claims_from_base_and_proposed_owners_are_one_probe
+    list = probes(base_rules_hash, demo_proposed_hash).select { |p| p.field == "estimated_loss" && p.value == 50_000 }
+    assert_equal [["cat_large_loss", :proposed]], list.map { |p| [p.rule_id, p.source] }
+    assert_equal ["liability", true, "TX"], list.first.claim.to_h.values_at("line_of_business", "cat_event", "loss_state")
+  end
+
   def test_probes_are_sorted_and_unique_per_rule_field_and_value
     list = probes(base_rules_hash, demo_proposed_hash)
     keys = list.map { |p| [p.field, p.value, p.rule_id] }
