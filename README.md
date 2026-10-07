@@ -101,12 +101,14 @@ bundle exec cucumber                     # 331 scenarios (UI, API, contracts, ga
 bundle exec cucumber --tags @k6_pr       # k6 smoke plus capacity audit (needs k6)
 ```
 
-**Docker:**
+**Docker** (these commands were verified on a local run; see [docs/LOCAL_DOCKER_RUN.md](docs/LOCAL_DOCKER_RUN.md)):
 ```bash
 export SECRET_KEY_BASE=$(openssl rand -hex 64)
-docker compose up app                    # http://localhost:3000
-docker compose run --rm test             # Cucumber in a container
-docker compose --profile load run --rm k6
+docker compose up -d --wait app                          # http://localhost:3000
+docker compose --profile test run --rm test              # Cucumber in a container
+docker compose --profile load run --rm --no-deps k6      # k6 smoke against the running app
+docker compose exec app bin/capacity_audit               # exit 1 = an adjuster is over capacity
+docker compose --profile test --profile load down -v
 ```
 
 Configuration is documented in [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The app refuses to boot on invalid config.
@@ -124,7 +126,11 @@ Configuration is documented in [docs/CONFIGURATION.md](docs/CONFIGURATION.md). T
 | Rule-change gate | PRs | a newly stranded claim, > 10% rerouted, or any boundary-probe change |
 | Nightly | schedule or manual | load, storm, soak and stress profiles; 3× flake hunt; any flaky test |
 
-The CI jobs and the Docker build were written and reviewed on a machine with neither Docker nor a GitHub remote, so the code review was their safeguard until the first push. [AI_WORKFLOW.md](docs/AI_WORKFLOW.md) says exactly what was verified by running and what by reading.
+The CI jobs and the Docker build were written and reviewed on a machine with neither Docker nor a GitHub remote, so at first they were checked only by code review. Both have since been verified by running:
+- **On GitHub:** CI passed every job on its first real run.
+- **Locally in Docker:** the image build, a production-container smoke test, all 331 scenarios, k6 smoke (p95 24 ms) with a clean capacity audit, and the gate correctly failing the demo change. See [docs/LOCAL_DOCKER_RUN.md](docs/LOCAL_DOCKER_RUN.md).
+
+[AI_WORKFLOW.md](docs/AI_WORKFLOW.md) records what was verified when, and how.
 
 ## Known limits (v1)
 
