@@ -25,6 +25,7 @@ When the repo is on GitHub, each entry becomes an issue and the phase PR that fi
 | BUG-015 | 3a | Low | qa-engineer | An invalid UTF-8 POST body returned an HTML 400 instead of JSON `malformed_json` | Fixed | 42ec488 | `api_test.rb` |
 | BUG-016 | 3a | Low | qa-engineer | A webhook URL like `ftp://…` booted, and every delivery then failed. A missing rules file gave a raw `Errno::ENOENT` instead of the refusal message | Fixed | d8cdca5 | `dispatch_settings_test.rb` |
 | BUG-017 | 3a | Low | qa-engineer (noted, filed by orchestrator) | The in-process `WebhookQueue` has no size limit and delivers one at a time (each up to 2 s), so against a dead endpoint the backlog grows until recovery or exit | Deferred | — | — (to be handled by the transactional outbox, Q57) |
+| BUG-018 | 3b | Low | qa-engineer | The claim form says "Enter an amount of $0 or more." for an amount that is too **large** (e.g. `99999999999999999999` in "Estimated loss"): `out_of_range` covers both negatives and values above 2^53−1 but has one message. Repro: file a claim through `/new-claim` with that amount; expected a message naming the upper limit, actual the $0-or-more message | Open | — | — |
 
 ## Spec gaps (decided, not defects)
 
