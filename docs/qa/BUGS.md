@@ -17,13 +17,13 @@ When the repo is on GitHub, each entry becomes an issue and the phase PR that fi
 | BUG-007 | 2 | Low | qa-engineer | `examples/README.md` named the wrong states for the realistic day's stranded claims | Fixed | 310e478 | `shipped_data_test.rb` (README checked against a run) |
 | BUG-008 | 2 | Medium | code-reviewer | **Gate blind spot:** deleting one of two rules that share a threshold left no probe for the claims that lost their route | Fixed | c8b443f | `qa_probes_test.rb` (written failing first) |
 | BUG-009 | 2 | Medium | code-reviewer | The roster's internal adjuster list could be mutated from outside, past validation | Fixed | 4f6de98 | `inputs_test.rb` |
-| BUG-010 | 3a | Medium | orchestrator (re-run), diagnosed by qa-engineer | **Flaky concurrency test:** under load SQLite returned `BusyException` after about 0.2 s instead of waiting the 5 s busy timeout. In production the same would make a dispatch return 500. Capacity was never violated | Open | — | — |
-| BUG-011 | 3a | High | qa-engineer | **A webhook blocked the API response for 58.8 s** (a trickling endpoint) or 21 s (a blackhole IP). The 2 s timeout applied per read, not per request | Open | — | — |
-| BUG-012 | 3a | Medium | qa-engineer | `GET /api/claims?page=99999999999999999999` returned 500 (the SQLite offset overflowed) | Open | — | — |
-| BUG-013 | 3a | Medium | qa-engineer | A duplicated API token silently took the last role, so a config slip could promote an adjuster token to ops | Open | — | — |
-| BUG-014 | 3a | Low | qa-engineer | A claim numbered `stats` could be created but never fetched; claim numbers with surrounding spaces were accepted | Open | — | — |
-| BUG-015 | 3a | Low | qa-engineer | An invalid UTF-8 POST body returned an HTML 400 instead of JSON `malformed_json` | Open | — | — |
-| BUG-016 | 3a | Low | qa-engineer | A webhook URL like `ftp://…` booted, and every delivery then failed. A missing rules file gave a raw `Errno::ENOENT` instead of the refusal message | Open | — | — |
+| BUG-010 | 3a | Medium | orchestrator (re-run), diagnosed by qa-engineer | **Flaky concurrency test:** under load SQLite returned `BusyException` after about 0.2 s instead of waiting the 5 s busy timeout. In production the same would make a dispatch return 500. Capacity was never violated | Fixed | d19e89d | `claim_dispatcher_test.rb` (forced BUSY is retried with the slot counted once; a 4th failure is raised with nothing written) |
+| BUG-011 | 3a | High | qa-engineer | **A webhook blocked the API response for 58.8 s** (a trickling endpoint) or 21 s (a blackhole IP). The 2 s timeout applied per read, not per request | Fixed | c7e4226 | `webhook_deadline_test.rb` |
+| BUG-012 | 3a | Medium | qa-engineer | `GET /api/claims?page=99999999999999999999` returned 500 (the SQLite offset overflowed) | Fixed | 71760e1 | `api_test.rb` |
+| BUG-013 | 3a | Medium | qa-engineer | A duplicated API token silently took the last role, so a config slip could promote an adjuster token to ops | Fixed | 1b0d6e5 | `dispatch_settings_test.rb` |
+| BUG-014 | 3a | Low | qa-engineer | A claim numbered `stats` could be created but never fetched; claim numbers with surrounding spaces were accepted | Fixed | 827c383 | `claim_input_test.rb` |
+| BUG-015 | 3a | Low | qa-engineer | An invalid UTF-8 POST body returned an HTML 400 instead of JSON `malformed_json` | Fixed | 42ec488 | `api_test.rb` |
+| BUG-016 | 3a | Low | qa-engineer | A webhook URL like `ftp://…` booted, and every delivery then failed. A missing rules file gave a raw `Errno::ENOENT` instead of the refusal message | Fixed | d8cdca5 | `dispatch_settings_test.rb` |
 
 ## Spec gaps (decided, not defects)
 
