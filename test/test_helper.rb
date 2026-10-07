@@ -6,18 +6,34 @@ require "tmpdir"
 require "dispatch"
 
 # The webhook contract checks need json_schemer (a gem, ~1 s to load), so they run only
-# under `bundle exec` or with CONTRACTS=1. When they are skipped, say so after the
-# summary, so a plain run's pass count isn't mistaken for full coverage.
+# under `bundle exec` or with CONTRACTS=1. When any of them actually skipped in this run,
+# say so after the summary, so a plain run's pass count isn't mistaken for full coverage.
 CONTRACT_TESTS_ENABLED = !!(defined?(Bundler) || ENV["CONTRACTS"] == "1")
-unless CONTRACT_TESTS_ENABLED
-  Minitest.after_run do
-    puts <<~NOTE
 
-      NOTE: the webhook contract layer (JSON Schema, json_schemer) was SKIPPED in this run;
-      the skips above are those tests. To run them too:
-        CONTRACTS=1 bundle exec ruby -Ilib -e 'Dir["test/**/*_test.rb"].each { |f| require "./\#{f}" }'
-    NOTE
+module ContractSkipNotice
+  @skipped = 0
+
+  class << self
+    attr_accessor :skipped
   end
+
+  # Counts tests that skipped with a contract-layer message (ours and QA's both say "contract").
+  def after_teardown
+    super
+    ContractSkipNotice.skipped += 1 if skipped? && failure.message.match?(/\bcontract\b/i)
+  end
+end
+Minitest::Test.prepend(ContractSkipNotice)
+
+Minitest.after_run do
+  next if ContractSkipNotice.skipped.zero?
+
+  puts <<~NOTE
+
+    NOTE: #{ContractSkipNotice.skipped} webhook contract test(s) (JSON Schema, json_schemer) were SKIPPED in this run.
+    To run them too:
+      CONTRACTS=1 bundle exec ruby -Ilib -e 'Dir["test/**/*_test.rb"].each { |f| require "./\#{f}" }'
+  NOTE
 end
 
 # Shared fixtures: the Background roster and rules from features/dispatch_routing.feature
