@@ -668,3 +668,5 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
 - **G3.** Operator and field types must agree. `gt`/`gte`/`lt`/`lte` are allowed only on numeric fields (`estimated_loss`, `vehicle_value`). `eq`/`in` values must match the field's type (string, number or boolean). A mismatch is `invalid_value`.
 - **G5.** `Roster.new` and `Roster#update` apply the same validation as the file loader.
 - **Minor.** Markdown on stdout uses LF on every platform. `duplicate_priority` is not reported for a priority that is already `invalid_value`.
+- **G6 (added after the phase 2 re-verify).** `eq`/`in` values on enum fields must be valid members: `line_of_business` ∈ {auto, property, liability}, and `loss_state` must be an uppercase 2-letter USPS code (the same check as for claims). Otherwise the result is `invalid_value` at `.value`. Without this, a rule like `loss_state eq "tx"` silently never matches.
+- **Root README (Q53).** It's written in the final docs phase. Until then, `examples/README.md` carries the two commands.
