@@ -131,6 +131,7 @@ module K6World
     log("k6 #{profile} (exit #{status.exitstatus}):\n#{output.lines.last(45).join}")
     @k6_ran = true
     @audited_after_k6 = false
+    @k6_label = profile
     @k6_run = K6Run.new(profile, status.exitstatus, output, summary)
   end
 
@@ -147,6 +148,7 @@ module K6World
     log("bin/stress_run (exit #{status.exitstatus}):\n#{output.lines.last(30).join}")
     @k6_ran = true
     @audited_after_k6 = false
+    @k6_label = "stress"
     @stress_run = StressRunResult.new(status.exitstatus, output, report)
   end
 
@@ -168,8 +170,14 @@ module K6World
     @k6_ran == true
   end
 
+  # Marks the audit as done for this k6 run and keeps its output as a CI artifact
+  # (reports/k6/capacity-audit-<profile>.txt, LOAD_TEST_CRITERIA.md "Artifacts").
   def audited_after_k6!
-    @audited_after_k6 = true if k6_ran?
+    return unless k6_ran?
+
+    @audited_after_k6 = true
+    File.write(File.join(REPORT_DIR, "capacity-audit-#{@k6_label}.txt"),
+               "exit #{audit_run.status}\n#{audit_run.stdout}#{audit_run.stderr}")
   end
 
   def audited_after_k6?
@@ -230,6 +238,7 @@ After("@k6_pr or @k6_nightly") do |scenario|
   # don't run it still get it here, so no profile escapes the over-assignment check.
   if k6_ran? && !audited_after_k6? && !scenario.failed?
     run_capacity_audit
+    audited_after_k6!
     unless audit_run.status.zero?
       stop_k6_app!
       raise "capacity audit after the k6 run failed (exit #{audit_run.status}):\n#{audit_run.stdout}#{audit_run.stderr}"

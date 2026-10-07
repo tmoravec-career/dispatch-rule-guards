@@ -13,7 +13,7 @@
 # Debian bookworm (glibc). Gemfile.lock pins precompiled native gems for x86_64-linux and
 # aarch64-linux (glibc) and x86_64-linux-musl, so this builds on amd64 and arm64 hosts.
 
-ARG RUBY_VERSION=3.3
+ARG RUBY_VERSION=3.3.12
 
 # --- base: Ruby and the app's runtime settings, shared by every stage ---
 FROM ruby:${RUBY_VERSION}-slim-bookworm AS base
