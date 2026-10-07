@@ -210,7 +210,9 @@ jobs:
           test "$code" = 200
       - name: k6 smoke from the compose k6 service
         run: docker compose --profile load run --rm k6
+      # Also (above all) after a failed k6 run (BUG-030); only a cancelled run skips it.
       - name: Capacity audit after the k6 run
+        if: ${{ !cancelled() }}
         run: docker compose exec -T app bin/capacity_audit | tee reports/k6/capacity-audit-docker-smoke.txt
       - name: App logs
         if: always()
@@ -324,9 +326,11 @@ jobs:
         with:
           k6-version: ${{ env.K6_VERSION }}
       - run: bin/rails db:prepare
-      # Each scenario boots the app, runs one profile (stress through bin/stress_run, which exits 0
-      # after any completed run), then runs bin/capacity_audit as its own step, which fails the job
-      # on any over-assignment, including after stress.
+      # Each scenario boots the app and runs one profile (stress through bin/stress_run, which
+      # exits 0 after any completed run). bin/capacity_audit then runs as a scenario step or, when a
+      # failed k6 step skipped that step (or the scenario has none), in the After hook of
+      # features/support/k6_world.rb. Either way it runs after every k6 run, its output is kept in
+      # reports/k6/, and any over-assignment fails the scenario and so this job, stress included.
       - name: load, storm, soak, stress and the latency-breach checks
         run: bundle exec cucumber -p ci --tags @k6_nightly
       - name: Stress breaking point
