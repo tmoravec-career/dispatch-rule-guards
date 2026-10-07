@@ -23,7 +23,8 @@ module DispatchRulesGuard
     config.generators.system_tests = nil
     config.time_zone = "UTC"
 
-    # Every API response, including errors raised before a controller runs, is JSON.
+    # Errors raised outside a controller's own handling: JSON under /api, so every API
+    # response is JSON; a minimal HTML page for the browser UI (ErrorsController).
     config.exceptions_app = ->(env) { ErrorsController.action(:show).call(env) }
   end
 end
