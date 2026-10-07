@@ -705,3 +705,14 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
 - **Boot checks.** The webhook URL must be an absolute `http`/`https` URL. A missing rules or roster file gives the standard "refusing to boot" message.
 - **Codes recorded (QA verdict: acceptable).** 415 is `unsupported_media_type`; 500 is `internal_error`. A whole-number float such as `12000.0` is an integer. Money above 2^53−1 is `out_of_range`. `not_configured` is the delivery state when no URL is set.
 - **Capacity audit command.** Both `bin/capacity_audit` and `bin/rails dispatch:capacity_audit` are supported, and steps use `bin/capacity_audit`.
+
+---
+
+### Q58. Web UI decisions from phase 3b
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07 (QA verdict: acceptable).**
+
+- **Claim form URL.** The form is at `/new-claim`, because a claim may be numbered `new`.
+- **Claim number spaces.** The UI form **trims** spaces around the claim number before validating, and the API **rejects** them (Q57). Either way the stored value has no surrounding spaces.
+- **Money error codes.** The UI uses the API's codes: `out_of_range` (negative, or above 2^53−1), `not_an_integer` (non-zero cents) and `invalid_value` (anything else). Each gets its own human message.
+- **Unknown filter values.** An unknown filter value in the URL returns a 422 page with an alert and a way to clear the filters.
