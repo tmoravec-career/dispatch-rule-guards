@@ -123,7 +123,7 @@ module DispatchSettings
 
     # Milliseconds added to every API response, from DISPATCH_TEST_LATENCY_MS (default 0).
     # A test-only setting for the k6 latency-breach scenarios (STEP_GLOSSARY.md section 9):
-    # production refuses to boot with it set.
+    # every environment except test refuses to boot with it set.
     def test_latency_ms
       store.boot.test_latency_ms
     end
@@ -188,8 +188,8 @@ module DispatchSettings
 
     def parse_test_latency(env)
       raw = env["DISPATCH_TEST_LATENCY_MS"].presence or return 0
-      if Rails.env.production?
-        raise InvalidConfig, "DISPATCH_TEST_LATENCY_MS is a test-only setting and is refused in production"
+      unless Rails.env.test?
+        raise InvalidConfig, "DISPATCH_TEST_LATENCY_MS is a test-only setting and is refused in #{Rails.env}"
       end
 
       value = Integer(raw, 10, exception: false)

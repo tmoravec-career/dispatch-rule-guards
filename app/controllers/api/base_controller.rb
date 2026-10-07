@@ -35,7 +35,7 @@ module Api
       super
     end
 
-    # DISPATCH_TEST_LATENCY_MS (test and development only): slows every API response so the
+    # DISPATCH_TEST_LATENCY_MS (test environment only; refused at boot elsewhere): slows every API response so the
     # k6 latency-breach scenarios can prove a run fails through its thresholds alone.
     def add_test_latency
       ms = DispatchSettings.test_latency_ms

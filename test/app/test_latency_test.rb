@@ -3,7 +3,7 @@ require "open3"
 
 # DISPATCH_TEST_LATENCY_MS: the test-only seam behind "the app adds {int} ms of latency to
 # every API response" (STEP_GLOSSARY.md section 9). Off by default, applied to every API
-# response (even a 401), and refused in production.
+# response (even a 401), and refused outside the test environment.
 class TestLatencyTest < ActionDispatch::IntegrationTest
   include AppTestHelpers
 
@@ -33,7 +33,7 @@ class TestLatencyTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "the setting is read at boot, validated, and refused in production" do
+  test "the setting is read at boot, validated, and refused outside the test environment" do
     out, err, status = boot("DISPATCH_TEST_LATENCY_MS" => "500")
     assert status.success?, err
     assert_equal "500", out.strip
@@ -45,5 +45,9 @@ class TestLatencyTest < ActionDispatch::IntegrationTest
     _, err, status = boot("RAILS_ENV" => "production", "SECRET_KEY_BASE" => "a" * 128, "DISPATCH_TEST_LATENCY_MS" => "500")
     refute status.success?
     assert_includes err, "DISPATCH_TEST_LATENCY_MS is a test-only setting and is refused in production"
+
+    _, err, status = boot("RAILS_ENV" => "development", "DISPATCH_TEST_LATENCY_MS" => "500")
+    refute status.success?
+    assert_includes err, "DISPATCH_TEST_LATENCY_MS is a test-only setting and is refused in development"
   end
 end
