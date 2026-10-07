@@ -1,0 +1,35 @@
+<h2>Dispatch</h2>
+<dl class="values">
+  <dt>Status</dt>
+  <dd><span data-testid="dispatch-status" class="badge <%= claim.status %>"><%= claim.status %></span></dd>
+  <dt>Queue</dt>
+  <dd data-testid="dispatch-queue"><%= claim.queue %></dd>
+  <dt>Matched rule</dt>
+  <% if claim.matched_rule %>
+    <dd data-testid="dispatch-matched-rule"><%= claim.matched_rule %></dd>
+  <% else %>
+    <dd data-testid="dispatch-no-matched-rule">None: no rule matched, so the claim fell through to <%= Dispatch::GENERAL_INTAKE %></dd>
+  <% end %>
+  <dt>Adjuster</dt>
+  <% if claim.adjuster_id %>
+    <dd data-testid="dispatch-adjuster"><%= claim.adjuster_id %></dd>
+  <% else %>
+    <dd>None</dd>
+  <% end %>
+  <dt>Reason code</dt>
+  <dd data-testid="dispatch-reason-code"><%= claim.reason_code %></dd>
+  <dt>Reason</dt>
+  <dd data-testid="dispatch-reason"><%= claim.reason %></dd>
+</dl>
+
+<h2>Dispatch history</h2>
+<ol>
+  <% claim.dispatch_events.each do |event| %>
+    <li data-testid="dispatch-history-entry">
+      <time datetime="<%= event.occurred_at.utc.iso8601(3) %>"><%= event.occurred_at.utc.strftime("%Y-%m-%d %H:%M:%S UTC") %></time>:
+      <%= event.status %> in <%= event.queue %>,
+      <%= event.adjuster_id ? "adjuster #{event.adjuster_id}" : "no adjuster" %>
+      (<%= event.reason_code %>)
+    </li>
+  <% end %>
+</ol>

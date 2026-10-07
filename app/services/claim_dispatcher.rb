@@ -1,0 +1,178 @@
+# Creates and re-dispatches claims: the engine decides, this class makes the decision
+# stick in the database without ever over-assigning an adjuster (Q37), then sends the
+# webhook after commit (Q24).
+#
+# Every attempt is:
+#   1. Selection: a plain read of the roster and Engine#decide, with no transaction open.
+#   2. The race seam (tests only, see below).
+#   3. One short write transaction: the conditional UPDATE that claims the slot, plus the
+#      claim and dispatch-event writes. If the UPDATE changes 0 rows another request took
+#      the slot, so the transaction rolls back and step 1 runs again, afresh, excluding
+#      that adjuster. A claim is left unassigned only when every qualified adjuster is full.
+#
+# Write transactions begin IMMEDIATE (database.yml, Q57), so SQLite takes the write lock at
+# BEGIN, waiting out the busy timeout, and a read-to-write upgrade (SQLITE_BUSY_SNAPSHOT
+# under WAL, which the busy timeout does not retry) never happens. If SQLite still reports
+# BUSY, the attempt rolls back and starts again from a fresh read, up to MAX_BUSY_RETRIES
+# times, so lock contention makes a dispatch wait rather than fail.
+#
+# Precondition: create and redispatch must be called with NO transaction open (BUG-023).
+# Inside an outer transaction the write transaction would only be a savepoint, so the
+# webhook would go out before the real commit, and selection would no longer be a plain
+# read. Outside the test environment both methods raise OuterTransaction instead. Tests run
+# inside a rolled-back transaction by design, so the check is off there.
+class ClaimDispatcher
+  class DuplicateClaimNumber < StandardError; end
+  class OuterTransaction < StandardError; end
+
+  # Raised inside a write transaction when a concurrent re-dispatch of the same claim
+  # committed first. The transaction rolls back and the re-dispatch starts over.
+  class StaleClaim < StandardError; end
+
+  MAX_STALE_RETRIES = 10
+  MAX_BUSY_RETRIES = 3
+
+  class << self
+    # Test-only race seam (STEP_GLOSSARY.md section 9): called as hook.call(claim, result)
+    # after every candidate selection and before the write transaction, with no transaction
+    # open. Nil in production; setting it outside the test environment raises.
+    def after_candidate_selection=(hook)
+      raise ArgumentError, "the race seam is test-only (Rails.env is #{Rails.env})" if hook && !Rails.env.test?
+
+      @after_candidate_selection = hook
+    end
+
+    def after_candidate_selection
+      Rails.env.test? ? @after_candidate_selection : nil
+    end
+
+    # Whether create and redispatch refuse to run inside an open transaction (BUG-023).
+    def refuses_outer_transaction?
+      !Rails.env.test?
+    end
+  end
+
+  # `notifier` forces inline delivery through that notifier (tests, tools).
+  def initialize(rules: DispatchSettings.rules, notifier: nil, clock: Clock)
+    @engine = Dispatch::Engine.new(rules)
+    @notifier = notifier
+    @clock = clock
+  end
+
+  # Creates and dispatches a claim from validated attributes (Dispatch::ClaimInput).
+  # Returns the persisted Claim. Raises DuplicateClaimNumber.
+  def create(attributes)
+    refuse_outer_transaction!
+    claim = Dispatch::Claim.from_h(attributes)
+    # The unique index is the real guard; this read just avoids a pointless dispatch.
+    raise DuplicateClaimNumber, claim.claim_number if Claim.exists?(claim_number: claim.claim_number)
+
+    record = nil
+    event = decide_and_write(claim) do |result|
+      record = Claim.create!(claim.to_h.merge(Claim.result_columns(result)).merge(dispatch_count: 1,
+                                                                                 created_at: @clock.now))
+      create_event(record, claim, result, sequence: 1)
+    end
+    deliver(event)
+    record.reload
+  rescue ActiveRecord::RecordNotUnique
+    raise DuplicateClaimNumber, claim.claim_number
+  end
+
+  # Re-dispatch (Q19): releases the current assignment, routes again with the current
+  # rules and roster, appends to the history and sends a new event, even if nothing changed.
+  # The release and the new assignment commit together, so the claim is never lost between them.
+  def redispatch(record)
+    refuse_outer_transaction!
+    MAX_STALE_RETRIES.times do
+      record.reload
+      previous = record.adjuster_id
+      sequence = record.dispatch_count + 1
+      claim = record.to_engine
+      begin
+        event = decide_and_write(claim, releasing: previous) do |result|
+          # Optimistic check: a concurrent re-dispatch of this claim would double-release.
+          moved = Claim.where(id: record.id, dispatch_count: record.dispatch_count)
+                       .update_all(Claim.result_columns(result).merge(dispatch_count: sequence, updated_at: @clock.now))
+          raise StaleClaim if moved.zero?
+
+          create_event(record, claim, result, sequence: sequence)
+        end
+        deliver(event)
+        return record.reload
+      rescue StaleClaim
+        next
+      end
+    end
+    raise StaleClaim, "claim #{record.claim_number} kept changing during re-dispatch"
+  end
+
+  private
+
+  def refuse_outer_transaction!
+    return unless self.class.refuses_outer_transaction? && ApplicationRecord.connection.transaction_open?
+
+    raise OuterTransaction, "ClaimDispatcher must be called with no transaction open: inside one, the write "                             "would only be a savepoint and the webhook would be sent before the real commit"
+  end
+
+  # Runs selection -> seam -> write transaction until the decision commits. The block
+  # writes the claim and its event for `result` and returns the event; it runs inside the
+  # transaction, after the slot is claimed (and the previous one released).
+  def decide_and_write(claim, releasing: nil)
+    excluded = []
+    busy_retries = 0
+    loop do
+      result = @engine.decide(claim, Adjuster.engine_roster(releasing: releasing), exclude: excluded)
+      self.class.after_candidate_selection&.call(claim, result)
+
+      begin
+        event = ApplicationRecord.transaction(requires_new: true) do
+          written = yield(result)
+          Adjuster.release_slot(releasing) if releasing
+          raise ActiveRecord::Rollback if result.assigned? && !Adjuster.take_slot(result.adjuster_id)
+
+          written
+        end
+      rescue ActiveRecord::StatementInvalid => e
+        raise unless busy?(e) && (busy_retries += 1) <= MAX_BUSY_RETRIES
+
+        # Everything in the transaction, the slot included, rolled back. Start over afresh.
+        Rails.logger.warn("dispatch #{claim.claim_number}: database busy; retry #{busy_retries} of #{MAX_BUSY_RETRIES}")
+        next
+      end
+      return event if event
+
+      # Lost the race for that slot: it is full now. Re-select among the rest.
+      Rails.logger.info("dispatch #{claim.claim_number}: lost the race for #{result.adjuster_id}; re-selecting")
+      excluded << result.adjuster_id
+    end
+  end
+
+  def busy?(error)
+    error.cause.is_a?(SQLite3::BusyException)
+  end
+
+  def create_event(record, claim, result, sequence:)
+    event_id = Dispatch::Webhook.generate_event_id
+    payload = Dispatch::Webhook.payload(claim, result, event_id: event_id, occurred_at: @clock.now, sequence: sequence)
+    record.dispatch_events.create!(
+      sequence: sequence, event_id: event_id, event: payload["event"], occurred_at: Time.iso8601(payload["occurred_at"]),
+      payload: JSON.generate(payload), **Claim.result_columns(result)
+    )
+  end
+
+  # After commit, and never raises. Outside test the delivery is queued, so the caller
+  # doesn't wait on the webhook and the event stays "pending" until the worker gets to
+  # it (Q57). With no URL there is no network call, so that is recorded inline.
+  def deliver(event)
+    url = DispatchSettings.webhook_url
+    secret = DispatchSettings.webhook_secret
+    if @notifier || DispatchSettings.webhook_delivery == :inline || url.blank?
+      (@notifier || WebhookNotifier.new(url: url, secret: secret)).deliver(event)
+    else
+      DispatchSettings.webhook_queue.enqueue(event_id: event.id, url: url, secret: secret)
+    end
+  rescue StandardError => e
+    Rails.logger.error("could not deliver webhook #{event.event_id}: #{e.class}: #{e.message}")
+  end
+end

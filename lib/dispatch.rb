@@ -16,6 +16,8 @@ end
 
 require "dispatch/errors"
 require "dispatch/claim"
+require "dispatch/claim_input"
+require "dispatch/money_input"
 require "dispatch/condition"
 require "dispatch/rule"
 require "dispatch/rules_config"

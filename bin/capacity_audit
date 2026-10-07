@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# Capacity audit (Q37, Q40): exits 1 and names every adjuster, active or inactive, whose
+# open_claims exceeds capacity; exits 0 when there are none. Same as
+# `bin/rails dispatch:capacity_audit`. Uses RAILS_ENV's database.
+require_relative "../config/environment"
+
+exit CapacityAudit.new.run($stdout)

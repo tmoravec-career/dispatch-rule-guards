@@ -67,3 +67,29 @@ Below, each phase records what each agent produced and, most importantly, **what
 | 9 | developer | **Stopped again.** The M1 rule as written counted an identical probe claim twice and would have changed 4 gate scenarios. It proposed defining the probe by the claim it builds. The orchestrator accepted that, and M1 landed with every feature unchanged. |
 
 **What the loop bought:** across two QA rounds and one review, the gate went from silently passing two kinds of dangerous rule change (an adjacent-threshold off-by-one, and a deleted rule hidden by a shared threshold) to catching both, each pinned by a regression test written before the fix. The role boundaries did real work here. The developer couldn't edit QA's tests or the spec, so every conflict came back as a decision instead of a quiet workaround.
+
+---
+
+## Phase 3: Rails app (API, webhooks, atomic capacity, web UI)
+
+**Outcome:** a Rails 7.2 layer over the engine, with no business logic in controllers or views. All **331 scenarios pass (3,083 steps)**, plus 80 app tests and 231 engine tests. Bugs found in this phase: 18 (BUG-010 to BUG-027), of which 17 are fixed with a regression test and 1 is deferred. See [qa/BUGS.md](qa/BUGS.md) and [qa/QA_RUNS.md](qa/QA_RUNS.md).
+
+Built in two developer passes: **3a** (API, webhooks, concurrency) and **3b** (server-rendered UI with Capybara page objects).
+
+| Step | Agent | What happened |
+|---|---|---|
+| 1 | developer (3a) | API, auth, rate limit, webhooks and an atomic conditional `UPDATE` with re-select through a test-only race seam. Proved the race tests are real: with the `open_claims < capacity` guard removed, both concurrency scenarios fail, and logs showed 18 lost races being retried. |
+| 2 | orchestrator | An independent re-run caught a **flaky failure (1 in 11)** that the developer's 5-for-5 had missed. |
+| 3 | qa-engineer | **FAIL.** Reproduced the flake (1 in 40), captured it, and classified it with measurements. It was **not** a capacity race and not a harness bug, but a SQLite `BusyException` returned in about 0.2 s under load instead of after the 5 s busy timeout, which in production would be a 500. Also found that **a slow webhook blocked an API response for 58.8 s** (the "2 s timeout" applied per read), a 500 on a huge `page`, and a duplicated token silently switching roles. Capacity held in every run. |
+| 4 | orchestrator | Q57: `IMMEDIATE` transactions with retry, one overall 2 s deadline per webhook, and delivery off the request thread. **The human asked for a formal bug log here**, so `docs/qa/` was created, backfilled, and filing became part of QA's role. |
+| 5 | developer | Fixed all 7 bugs, one commit per bug ID. The new webhook test against a real trickling TCP server took 10.2 s and failed on the old code. |
+| 6 | qa-engineer | **PASS.** Re-ran its original repros, confirmed `begin immediate transaction` on the live connection, and closed the bugs. |
+| 7 | developer (3b) | 44 UI scenarios, with label-first locators, page objects, no sleeps, and headless Chrome for 4 `@javascript` scenarios. Breaking the re-dispatch script failed all 4. |
+| 8 | qa-engineer | **PASS**, with 1 low-severity bug. Checked escaping (XSS), CSRF with protection switched on, accessibility attributes, and 20 money-input formats. |
+| 9 | code-reviewer | **REQUEST CHANGES.** The blocker: **`bin/rails` was committed with a Windows-only `ruby.exe` shebang, so the app could never start on Linux CI or in Docker**, and every Windows test run had passed it. Also found that production crashed without explanation when `SECRET_KEY_BASE` was unset, and that re-seeding reset adjuster counters, allowing over-assignment that the capacity audit couldn't see. It confirmed by reading the code that a retried transaction can't double-send events or webhooks. |
+| 10 | developer | Fixed all 9, and found and fixed a latent bug in the process (API errors falling back to plain text), filed as BUG-027. |
+| 11 | qa-engineer | **PASS.** Patched each fix back out in memory; all 8 reverted fixes made a test fail. |
+
+**Process notes, recorded honestly:**
+- The human killed one QA run for overloading the machine. QA had run 40 repetitions plus a CPU-stress job. Every later agent ran under explicit resource limits (one command at a time, capped repeats), and the flake was still diagnosed.
+- Twice QA noticed a problem but didn't file it (an unbounded webhook queue, and JSON error pages for browsers). The orchestrator filed both (BUG-017, BUG-019). A formal log makes those gaps visible.
