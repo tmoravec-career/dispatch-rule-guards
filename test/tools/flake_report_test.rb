@@ -117,19 +117,34 @@ class FlakeReportTest < Minitest::Test
                  json["tests"].to_h { |t| [t["id"], t["label"]] })
   end
 
-  def test_repeated_names_within_one_run_stay_separate
-    runs = (1..2).map do |i|
-      dir = File.join(@dir, "run-#{i}")
-      FileUtils.mkdir_p(dir)
-      second = i == 1 ? "" : %(<failure message="boom"/>)
-      File.write(File.join(dir, "r.xml"), <<~XML)
-        <testsuite name="F"><testcase classname="F" name="Row"/><testcase classname="F" name="Row">#{second}</testcase></testsuite>
-      XML
-      dir
+  # A run whose testcases are the attempts of one test, in order (e.g. Cucumber --retry).
+  def write_attempts(run, attempts)
+    dir = File.join(@dir, run)
+    FileUtils.mkdir_p(dir)
+    cases = attempts.map do |result|
+      body = { fail: %(<failure message="boom"/>), skip: "<skipped/>", pass: "" }.fetch(result)
+      %(<testcase classname="F" name="Row">#{body}</testcase>)
     end
-    _, _, _, json = report(*runs)
+    File.write(File.join(dir, "r.xml"), %(<testsuite name="F">#{cases.join}</testsuite>))
+    dir
+  end
 
-    assert_equal({ "F :: Row" => "stable", "F :: Row #2" => "flaky" }, json["tests"].to_h { |t| [t["id"], t["label"]] })
+  def test_a_failure_then_a_pass_in_one_run_is_one_flaky_test
+    status, markdown, _, json = report(write_attempts("run-1", %i[fail pass]), write_attempts("run-2", %i[pass]))
+
+    assert_equal 1, status
+    assert_equal [["F :: Row", "flaky"]], json["tests"].map { |t| [t["id"], t["label"]] }
+    assert_equal %w[flaky passed], json["tests"].first["outcomes"]
+    assert_equal "boom", json["tests"].first["first_failure"]
+    assert_includes markdown, "| F :: Row | FAIL+pass | pass | boom |"
+  end
+
+  def test_repeated_attempts_with_one_result_collapse_to_that_result
+    _, _, _, json = report(write_attempts("run-1", %i[pass pass]), write_attempts("run-2", %i[skip pass]))
+    assert_equal [["F :: Row", "stable"]], json["tests"].map { |t| [t["id"], t["label"]] }
+
+    _, _, _, json = report(write_attempts("run-1", %i[fail fail]), write_attempts("run-2", %i[fail skip]))
+    assert_equal [["F :: Row", "broken"]], json["tests"].map { |t| [t["id"], t["label"]] }
   end
 
   def test_accepts_a_single_xml_file_as_a_run_and_testsuites_roots

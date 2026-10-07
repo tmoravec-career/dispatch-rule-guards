@@ -11,6 +11,8 @@
 #   stable  passed every time
 #   flaky   passed at least once and failed at least once
 #   broken  failed every time
+# Within one run, test cases with the same suite and name are ONE test attempted several times
+# (e.g. Cucumber's --retry): a failure and a pass in the same run make it flaky.
 # A test that was only ever skipped, or missing from every run, is listed as "not run" and
 # gets no label. A test missing from some runs is labelled from the runs it appears in, and
 # the report says it was missing.
@@ -34,6 +36,7 @@ module FlakeReport
     def label
       statuses = ran.map(&:status)
       return nil if statuses.empty?
+      return "flaky" if statuses.include?("flaky")
       return "stable" if statuses.all?("passed")
       return "broken" if statuses.all?("failed")
 
@@ -45,7 +48,7 @@ module FlakeReport
     end
 
     def first_failure
-      outcomes.compact.find { |o| o.status == "failed" }&.message
+      outcomes.compact.find { |o| %w[failed flaky].include?(o.status) }&.message
     end
   end
 
@@ -75,12 +78,9 @@ module FlakeReport
     REXML::XPath.each(doc, "//testcase") do |tc|
       classname = tc.attributes["classname"].to_s
       name = tc.attributes["name"].to_s
-      base = "#{classname} :: #{name}"
-      # Two identical names in one run (e.g. outline rows) stay separate tests: #2, #3, ...
-      id = base
-      n = 1
-      id = "#{base} ##{n += 1}" while cases.key?(id)
-      cases[id] = [classname, name, outcome(tc)]
+      id = "#{classname} :: #{name}"
+      result = outcome(tc)
+      cases[id] = [classname, name, cases.key?(id) ? combine(cases[id][2], result) : result]
     end
   rescue REXML::ParseException => e
     raise InputError, "#{file}: malformed XML (#{e.message.lines.first.strip})"
@@ -96,6 +96,17 @@ module FlakeReport
       Outcome.new("skipped", nil)
     else
       Outcome.new("passed", nil)
+    end
+  end
+
+  # Two attempts of one test in one run (a retry). Skips don't count as attempts.
+  def combine(earlier, later)
+    return earlier if later.status == "skipped"
+    return later if earlier.status == "skipped"
+    return earlier if earlier.status == later.status
+
+    if [earlier.status, later.status].include?("flaky") || [earlier.status, later.status].sort == %w[failed passed]
+      Outcome.new("flaky", [earlier, later].find { |o| o.message }&.message)
     end
   end
 
@@ -131,7 +142,7 @@ module FlakeReport
     }
   end
 
-  CELL = { "passed" => "pass", "failed" => "FAIL", "skipped" => "skip" }.freeze
+  CELL = { "passed" => "pass", "failed" => "FAIL", "skipped" => "skip", "flaky" => "FAIL+pass" }.freeze
 
   def to_markdown(run_names, tests)
     counts = summary(tests)
