@@ -43,6 +43,34 @@ class InputsTest < Minitest::Test
                   ["unknown_field", "adjusters[0].extra"]], roster_errors(hash)
   end
 
+  # Q55 G5: building a roster in code validates like the loader.
+  def test_roster_new_validates
+    over = Dispatch::Adjuster.from_h(adjuster("open_claims" => 4))
+    error = assert_raises(Dispatch::ConfigError) { Dispatch::Roster.new([over]) }
+    assert_equal [["invalid_value", "adjusters[0].open_claims"]], error.errors.map { |e| [e.code, e.path] }
+
+    twins = [Dispatch::Adjuster.from_h(adjuster), Dispatch::Adjuster.from_h(adjuster)]
+    error = assert_raises(Dispatch::ConfigError) { Dispatch::Roster.new(twins) }
+    assert_equal [["duplicate_adjuster_id", "adjusters[1].id"]], error.errors.map { |e| [e.code, e.path] }
+
+    assert_raises(Dispatch::ConfigError) { Dispatch::Roster.new([adjuster]) }
+  end
+
+  def test_roster_update_validates_and_changes_nothing_on_error
+    roster = DispatchFixtures.roster
+    [[{ capacity: -1 }, "invalid_value", "adjusters[0].capacity"],
+     [{ open_claims: 4 }, "invalid_value", "adjusters[0].open_claims"],
+     [{ active: "no" }, "invalid_value", "adjusters[0].active"],
+     [{ enforce_licensing: false }, "unknown_field", "adjusters[0].enforce_licensing"],
+     [{ id: "ADJ-002" }, "duplicate_adjuster_id", "adjusters[1].id"]].each do |changes, code, path|
+      error = assert_raises(Dispatch::ConfigError, changes.inspect) { roster.update("ADJ-001", **changes) }
+      assert_includes error.errors.map { |e| [e.code, e.path] }, [code, path], changes.inspect
+    end
+    assert_equal DispatchFixtures::ROSTER, roster.to_h["adjusters"]
+    roster.update("ADJ-001", active: false)
+    refute roster.find("ADJ-001").active
+  end
+
   def test_roster_unknown_id
     assert_raises(KeyError) { DispatchFixtures.roster.find("ADJ-999") }
   end

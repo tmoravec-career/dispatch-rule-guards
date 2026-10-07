@@ -42,9 +42,22 @@ module Dispatch
       end
     end
 
+    # Validates like the file loader (Q55 G5), so a roster built in code can't hold
+    # an over-capacity adjuster, duplicate IDs or malformed fields either.
     def initialize(adjusters)
+      self.class.validate_adjusters!(adjusters)
       @adjusters = adjusters
       @by_id = adjusters.to_h { |a| [a.id, a] }
+    end
+
+    def self.validate_adjusters!(adjusters)
+      collector = ErrorCollector.new
+      unless adjusters.is_a?(Array) && adjusters.all? { |a| a.is_a?(Adjuster) }
+        collector.add("invalid_value", "adjusters", "a roster needs an array of Adjusters")
+        collector.raise_if_any!
+      end
+      validate_list(adjusters.map(&:to_h), collector)
+      collector.raise_if_any!
     end
 
     def find(id)
@@ -63,12 +76,18 @@ module Dispatch
       find(id).assign_open_claims!(count)
     end
 
-    # Replaces an adjuster's attributes, e.g. update("ADJ-004", active: false).
+    # Replaces an adjuster's attributes, e.g. update("ADJ-004", active: false). The result
+    # is validated as a whole roster; on error nothing changes.
     def update(id, **changes)
-      current = find(id)
-      replacement = Adjuster.from_h(current.to_h.merge(changes.transform_keys(&:to_s)))
-      @adjusters = adjusters.map { |a| a.id == id ? replacement : a }
-      @by_id[id] = replacement
+      index = adjusters.index(find(id))
+      hashes = adjusters.map(&:to_h)
+      hashes[index] = hashes[index].merge(changes.transform_keys(&:to_s))
+      collector = ErrorCollector.new
+      self.class.validate_list(hashes, collector)
+      collector.raise_if_any!
+
+      @adjusters = hashes.map { |h| Adjuster.from_h(h) }
+      @by_id = @adjusters.to_h { |a| [a.id, a] }
     end
 
     # Takes one slot. Refuses to over-assign, so capacity can never be exceeded here.
