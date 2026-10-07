@@ -28,6 +28,19 @@ class InputsTest < Minitest::Test
     assert_equal 0, copy.find("ADJ-001").open_claims
   end
 
+  # Review M2: the roster owns its list. Readers can't append, and the caller's array
+  # isn't shared, before or after an update.
+  def test_roster_list_is_frozen_and_not_shared
+    list = [Dispatch::Adjuster.from_h(adjuster)]
+    roster = Dispatch::Roster.new(list)
+    list << Dispatch::Adjuster.from_h(adjuster("id" => "ADJ-002"))
+    assert_equal 1, roster.adjusters.size
+    extra = Dispatch::Adjuster.from_h(adjuster("id" => "ADJ-003"))
+    assert_raises(FrozenError) { roster.adjusters << extra }
+    roster.update("ADJ-001", active: false)
+    assert_raises(FrozenError) { roster.adjusters << extra }
+  end
+
   def test_roster_validation
     hash = { "adjusters" => [
       adjuster("capacity" => -1, "extra" => 1),

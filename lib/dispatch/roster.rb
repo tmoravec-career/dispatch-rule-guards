@@ -43,10 +43,12 @@ module Dispatch
     end
 
     # Validates like the file loader (Q55 G5), so a roster built in code can't hold
-    # an over-capacity adjuster, duplicate IDs or malformed fields either.
+    # an over-capacity adjuster, duplicate IDs or malformed fields either. Keeps a frozen
+    # copy of the list, so neither the caller nor a reader of #adjusters can change it.
+    # Phase 3 needn't build a Roster: Engine#decide accepts any object responding to #adjusters.
     def initialize(adjusters)
       self.class.validate_adjusters!(adjusters)
-      @adjusters = adjusters
+      @adjusters = adjusters.dup.freeze
       @by_id = adjusters.to_h { |a| [a.id, a] }
     end
 
@@ -76,7 +78,8 @@ module Dispatch
     end
 
     # Replaces an adjuster's attributes, e.g. update("ADJ-004", active: false). The result
-    # is validated as a whole roster; on error nothing changes.
+    # is validated as a whole roster; on error nothing changes. On success every Adjuster
+    # object is replaced, so references taken before the update are stale.
     def update(id, **changes)
       index = adjusters.index(find(id))
       hashes = adjusters.map(&:to_h)
@@ -85,7 +88,7 @@ module Dispatch
       self.class.validate_list(hashes, collector)
       collector.raise_if_any!
 
-      @adjusters = hashes.map { |h| Adjuster.from_h(h) }
+      @adjusters = hashes.map { |h| Adjuster.from_h(h) }.freeze
       @by_id = @adjusters.to_h { |a| [a.id, a] }
     end
 
