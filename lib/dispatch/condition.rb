@@ -35,6 +35,10 @@ module Dispatch
     FIELD_TYPES = { "line_of_business" => :string, "loss_state" => :string, "cat_event" => :boolean,
                     "estimated_loss" => :number, "vehicle_value" => :number }.freeze
 
+    # Enum fields: eq/in values must be allowed members, the same sets claims are checked
+    # against (Q1), so a typo like "TXX" or "Auto" can't silently disable a rule (Q55 G6).
+    FIELD_ENUMS = { "line_of_business" => LINES_OF_BUSINESS, "loss_state" => US_STATES }.freeze
+
     def self.validate_value(hash, path, collector)
       value = hash["value"]
       field_type = FIELD_TYPES[hash["field"]]
@@ -69,6 +73,9 @@ module Dispatch
         collector.add("non_numeric_threshold", "#{path}.value", "#{hash['op']} value must be a finite number")
       elsif field_type && !values.all? { |v| type_of(v) == field_type }
         collector.add("invalid_value", "#{path}.value", "#{hash['field']} holds #{field_type} values, got #{hash['value'].inspect}")
+      elsif (allowed = FIELD_ENUMS[hash["field"]]) && !(values - allowed).empty?
+        collector.add("invalid_value", "#{path}.value",
+                      "#{(values - allowed).map(&:inspect).join(', ')} is not a valid #{hash['field']}")
       end
     end
 

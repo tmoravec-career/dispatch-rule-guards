@@ -114,6 +114,32 @@ class RulesConfigTest < Minitest::Test
     assert_equal 4, Dispatch::RulesConfig.from_h(single_rule(conditions)).rules.first.conditions.size
   end
 
+  # Q55 G6: eq/in values on enum fields must be valid members.
+  ENUM_VIOLATIONS = [
+    { "field" => "line_of_business", "op" => "eq", "value" => "Auto" },
+    { "field" => "line_of_business", "op" => "eq", "value" => "marine" },
+    { "field" => "line_of_business", "op" => "in", "value" => %w[auto boat] },
+    { "field" => "loss_state", "op" => "eq", "value" => "tx" },
+    { "field" => "loss_state", "op" => "eq", "value" => "TXX" },
+    { "field" => "loss_state", "op" => "eq", "value" => "PR" },
+    { "field" => "loss_state", "op" => "eq", "value" => " TX" },
+    { "field" => "loss_state", "op" => "in", "value" => %w[TX FL La] }
+  ].freeze
+
+  ENUM_VIOLATIONS.each_with_index do |condition, i|
+    define_method("test_enum_violation_#{i}") do
+      assert_equal [["invalid_value", "rules[0].conditions[0].value"]], errors_for(single_rule([condition])), condition.inspect
+    end
+  end
+
+  def test_every_enum_member_loads
+    conditions = [{ "field" => "line_of_business", "op" => "in", "value" => Dispatch::LINES_OF_BUSINESS },
+                  { "field" => "loss_state", "op" => "in", "value" => Dispatch::US_STATES }]
+    config = Dispatch::RulesConfig.from_h(single_rule(conditions))
+    assert_equal 51, config.rules.first.conditions.last.value.size
+    assert_includes Dispatch::US_STATES, "DC"
+  end
+
   # Q55 minor: an invalid priority is not also a duplicate.
   def test_invalid_priorities_are_not_reported_as_duplicates
     hash = { "rules" => %w[a b].map do |id|
