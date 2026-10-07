@@ -5,6 +5,21 @@ require "json"
 require "tmpdir"
 require "dispatch"
 
+# The webhook contract checks need json_schemer (a gem, ~1 s to load), so they run only
+# under `bundle exec` or with CONTRACTS=1. When they are skipped, say so after the
+# summary, so a plain run's pass count isn't mistaken for full coverage.
+CONTRACT_TESTS_ENABLED = !!(defined?(Bundler) || ENV["CONTRACTS"] == "1")
+unless CONTRACT_TESTS_ENABLED
+  Minitest.after_run do
+    puts <<~NOTE
+
+      NOTE: the webhook contract layer (JSON Schema, json_schemer) was SKIPPED in this run;
+      the skips above are those tests. To run them too:
+        CONTRACTS=1 bundle exec ruby -Ilib -e 'Dir["test/**/*_test.rb"].each { |f| require "./\#{f}" }'
+    NOTE
+  end
+end
+
 # Shared fixtures: the Background roster and rules from features/dispatch_routing.feature
 # and features/rule_change_gate.feature, plus small builders.
 module DispatchFixtures

@@ -78,10 +78,9 @@ class WebhookTest < Minitest::Test
                  Dispatch::Webhook.signature("what do ya want for nothing?", "Jefe")
   end
 
-  # json_schemer is a gem and takes ~1 s to load, so this check runs under `bundle exec`
-  # or with CONTRACTS=1, keeping the plain `ruby -Ilib` engine suite fast and gem-free.
+  # Contract layer: runs under `bundle exec` or CONTRACTS=1 (see test_helper.rb).
   def test_payload_conforms_to_contract_when_json_schemer_is_available
-    skip "contract check runs under bundle exec or CONTRACTS=1" unless defined?(Bundler) || ENV["CONTRACTS"] == "1"
+    skip "contract layer: run under bundle exec or CONTRACTS=1" unless CONTRACT_TESTS_ENABLED
     begin
       require "json_schemer"
     rescue LoadError
