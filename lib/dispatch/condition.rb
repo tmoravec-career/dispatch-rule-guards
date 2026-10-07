@@ -31,20 +31,52 @@ module Dispatch
       validate_value(hash, path, collector) if hash.key?("value")
     end
 
+    # The JSON type each routing field holds (Q1). Operators and values must agree with it (Q55 G3).
+    FIELD_TYPES = { "line_of_business" => :string, "loss_state" => :string, "cat_event" => :boolean,
+                    "estimated_loss" => :number, "vehicle_value" => :number }.freeze
+
     def self.validate_value(hash, path, collector)
       value = hash["value"]
+      field_type = FIELD_TYPES[hash["field"]]
       case hash["op"]
       when *NUMERIC_OPERATORS
         # A numeric-looking string is still a string: "100000" must not silently compare as text.
-        unless value.is_a?(Numeric)
-          collector.add("non_numeric_threshold", "#{path}.value", "#{hash['op']} needs a JSON number, got #{value.inspect}")
+        # 1e400 parses to Infinity, which is not a usable threshold either (Q55).
+        unless Dispatch.finite_number?(value)
+          collector.add("non_numeric_threshold", "#{path}.value", "#{hash['op']} needs a finite JSON number, got #{value.inspect}")
+        end
+        if field_type && field_type != :number
+          collector.add("invalid_value", "#{path}.op", "#{hash['op']} only applies to numeric fields, not #{hash['field']}")
         end
       when "in"
-        unless value.is_a?(Array) && !value.empty? && value.all? { |v| scalar?(v) }
+        if value.is_a?(Array) && !value.empty? && value.all? { |v| scalar?(v) }
+          validate_scalars(value, field_type, hash, path, collector)
+        else
           collector.add("invalid_value", "#{path}.value", "in needs a non-empty array of scalars, got #{value.inspect}")
         end
       when "eq"
-        collector.add("invalid_value", "#{path}.value", "eq needs a scalar, got #{value.inspect}") unless scalar?(value)
+        if scalar?(value)
+          validate_scalars([value], field_type, hash, path, collector)
+        else
+          collector.add("invalid_value", "#{path}.value", "eq needs a scalar, got #{value.inspect}")
+        end
+      end
+    end
+
+    # Non-finite numbers are non_numeric_threshold; a value of the wrong type for the field is invalid_value.
+    def self.validate_scalars(values, field_type, hash, path, collector)
+      if values.any? { |v| v.is_a?(Float) && !v.finite? }
+        collector.add("non_numeric_threshold", "#{path}.value", "#{hash['op']} value must be a finite number")
+      elsif field_type && !values.all? { |v| type_of(v) == field_type }
+        collector.add("invalid_value", "#{path}.value", "#{hash['field']} holds #{field_type} values, got #{hash['value'].inspect}")
+      end
+    end
+
+    def self.type_of(value)
+      case value
+      when String then :string
+      when true, false then :boolean
+      when Numeric then :number
       end
     end
 

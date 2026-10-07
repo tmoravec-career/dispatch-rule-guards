@@ -38,8 +38,10 @@ module Dispatch
         return
       end
       rules.each_with_index { |rule, i| validate_rule(rule, "rules[#{i}]", collector) }
-      check_duplicates(rules, "priority", "duplicate_priority", collector)
-      check_duplicates(rules, "id", "duplicate_rule_id", collector)
+      # Only well-formed values are compared: a priority that is already invalid_value
+      # isn't also reported as a duplicate (Q55).
+      check_duplicates(rules, "priority", "duplicate_priority", collector) { |v| v.is_a?(Integer) }
+      check_duplicates(rules, "id", "duplicate_rule_id", collector) { |v| Dispatch.non_empty_string?(v) }
     end
 
     def self.validate_rule(rule, path, collector)
@@ -89,7 +91,7 @@ module Dispatch
         next unless rule.is_a?(Hash) && rule.key?(key)
 
         value = rule[key]
-        next if value.nil? || value.is_a?(Array) || value.is_a?(Hash)
+        next unless yield(value)
 
         if first_seen.key?(value)
           collector.add(code, "rules[#{i}].#{key}", "#{key} #{value.inspect} is already used by rules[#{first_seen[value]}]")

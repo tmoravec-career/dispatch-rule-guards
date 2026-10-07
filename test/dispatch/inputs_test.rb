@@ -88,6 +88,16 @@ class InputsTest < Minitest::Test
                   ["unknown_field", "[1].colour"]], errors
   end
 
+  # Q55: values that parse to Infinity are invalid_value in claims and rosters.
+  def test_non_finite_numbers_in_claims_and_roster
+    claims = JSON.parse('[{"claim_number":"C","line_of_business":"auto","estimated_loss":1e400,' \
+                        '"vehicle_value":-1e400,"loss_state":"TX"}]')
+    assert_equal [["invalid_value", "[0].estimated_loss"], ["invalid_value", "[0].vehicle_value"]], claim_errors(claims)
+    roster = JSON.parse('{"adjusters":[{"id":"A","name":"A","active":true,"licensed_states":["TX"],"skills":[],' \
+                        '"capacity":1e400,"open_claims":0}]}')
+    assert_equal [["invalid_value", "adjusters[0].capacity"]], roster_errors(roster)
+  end
+
   def test_claims_must_be_an_array
     assert_equal [["invalid_value", "$"]], claim_errors({ "claims" => [] })
   end

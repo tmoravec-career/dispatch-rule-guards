@@ -65,6 +65,52 @@ class RulesConfigTest < Minitest::Test
     end
   end
 
+  # Q55: 1e400 parses to Infinity and is rejected at load, never reaching the probes (D2).
+  def test_non_finite_thresholds_are_rejected
+    ['{"field":"estimated_loss","op":"gte","value":1e400}',
+     '{"field":"estimated_loss","op":"lt","value":-1e400}',
+     '{"field":"vehicle_value","op":"eq","value":1e400}',
+     '{"field":"vehicle_value","op":"in","value":[1, 1e400]}'].each do |condition|
+      json = %({"rules":[{"id":"r1","priority":1,"queue":"q1","required_skills":[],"conditions":[#{condition}]}]})
+      assert_equal [["non_numeric_threshold", "rules[0].conditions[0].value"]], errors_for(json), condition
+    end
+  end
+
+  # Q55 G3: operators and values must agree with the field's type.
+  TYPE_MISMATCHES = [
+    [{ "field" => "loss_state", "op" => "gt", "value" => 5 }, ".op"],
+    [{ "field" => "cat_event", "op" => "gte", "value" => 1 }, ".op"],
+    [{ "field" => "cat_event", "op" => "eq", "value" => "true" }, ".value"],
+    [{ "field" => "estimated_loss", "op" => "eq", "value" => "5000" }, ".value"],
+    [{ "field" => "vehicle_value", "op" => "eq", "value" => true }, ".value"],
+    [{ "field" => "line_of_business", "op" => "eq", "value" => 1 }, ".value"],
+    [{ "field" => "line_of_business", "op" => "in", "value" => ["auto", 1] }, ".value"],
+    [{ "field" => "loss_state", "op" => "in", "value" => [true] }, ".value"]
+  ].freeze
+
+  TYPE_MISMATCHES.each_with_index do |(condition, suffix), i|
+    define_method("test_type_mismatch_#{i}") do
+      assert_equal [["invalid_value", "rules[0].conditions[0]#{suffix}"]], errors_for(single_rule([condition])), condition.inspect
+    end
+  end
+
+  def test_matching_types_load
+    conditions = [{ "field" => "cat_event", "op" => "in", "value" => [true] },
+                  { "field" => "vehicle_value", "op" => "eq", "value" => 100_000 },
+                  { "field" => "estimated_loss", "op" => "in", "value" => [1, 2.5] },
+                  { "field" => "loss_state", "op" => "eq", "value" => "TX" }]
+    assert_equal 4, Dispatch::RulesConfig.from_h(single_rule(conditions)).rules.first.conditions.size
+  end
+
+  # Q55 minor: an invalid priority is not also a duplicate.
+  def test_invalid_priorities_are_not_reported_as_duplicates
+    hash = { "rules" => %w[a b].map do |id|
+      { "id" => id, "priority" => 1.5, "queue" => "q", "required_skills" => [],
+        "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }] }
+    end }
+    assert_equal [["invalid_value", "rules[0].priority"], ["invalid_value", "rules[1].priority"]], errors_for(hash)
+  end
+
   def test_licensing_cannot_be_configured
     assert_includes errors_for({ "enforce_licensing" => false, "rules" => [] }), ["unknown_field", "enforce_licensing"]
     assert_includes errors_for(single_rule([], "ignore_licensing" => true)), ["unknown_field", "rules[0].ignore_licensing"]
