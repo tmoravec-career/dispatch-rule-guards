@@ -19,12 +19,45 @@ class BoundaryProbesTest < Minitest::Test
     assert_equal [99_999, 100_000, 100_001], values(list, "vehicle_value")
   end
 
-  def test_probes_are_sorted_and_deduplicated_by_field_and_value
+  def test_probes_are_sorted_and_unique_per_rule_field_and_value
     list = probes(base_rules_hash, demo_proposed_hash)
-    keys = list.map { |p| [p.field, p.value] }
+    keys = list.map { |p| [p.field, p.value, p.rule_id] }
     assert_equal keys.uniq, keys
     assert_equal keys.sort, keys
     assert_equal [59_999, 60_000, 60_001, 99_999, 100_000, 100_001], values(list, "vehicle_value")
+  end
+
+  def two_rule_hash(op)
+    { "rules" => [
+      { "id" => "big_property", "priority" => 10, "queue" => "big_property", "required_skills" => [],
+        "conditions" => [{ "field" => "line_of_business", "op" => "eq", "value" => "property" },
+                         { "field" => "estimated_loss", "op" => "gte", "value" => 50_000 }] },
+      { "id" => "big_auto", "priority" => 20, "queue" => "big_auto", "required_skills" => [],
+        "conditions" => [{ "field" => "line_of_business", "op" => "eq", "value" => "auto" },
+                         { "field" => "estimated_loss", "op" => op, "value" => 50_001 }] }
+    ] }
+  end
+
+  # Q55 / D3: colliding probe values from two rules each keep their own probe.
+  def test_colliding_probe_values_from_different_rules_are_both_probed
+    list = probes(two_rule_hash("gte"), two_rule_hash("gt"))
+    assert_equal [[49_999, "big_property", "property"], [50_000, "big_auto", "auto"], [50_000, "big_property", "property"],
+                  [50_001, "big_auto", "auto"], [50_001, "big_property", "property"], [50_002, "big_auto", "auto"]],
+                 list.map { |p| [p.value, p.rule_id, p.claim.line_of_business] }
+  end
+
+  # Q55 G1: fractional thresholds are probed at whole dollars only.
+  def test_fractional_thresholds_get_whole_dollar_probes
+    rules = { "rules" => [{ "id" => "r", "priority" => 1, "queue" => "q", "required_skills" => [], "conditions" => [
+      { "field" => "estimated_loss", "op" => "gt", "value" => 100.5 },
+      { "field" => "vehicle_value", "op" => "gte", "value" => 2_000.0 }
+    ] }] }
+    list = probes(rules, rules)
+    assert_equal [99, 100, 101, 102], values(list, "estimated_loss")
+    assert_equal [1_999, 2_000, 2_001], values(list, "vehicle_value")
+    assert(list.all? { |p| p.value.is_a?(Integer) })
+    # The other condition is satisfied with a whole dollar too: gt 100.5 -> 101.
+    assert_equal 101, list.find { |p| p.field == "vehicle_value" }.claim.estimated_loss
   end
 
   def test_probe_claim_starts_neutral_and_applies_owning_rules_other_conditions

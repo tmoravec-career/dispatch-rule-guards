@@ -1,7 +1,8 @@
 module Dispatch
   module Gate
     # Boundary probes generated from the configs themselves (Q29): every numeric
-    # threshold (gt/gte/lt/lte) in either rule set is probed at value-1, value and value+1.
+    # threshold (gt/gte/lt/lte) in either rule set is probed at value-1, value and value+1
+    # (whole dollars, so fractional thresholds get the dollars either side; Q55).
     class BoundaryProbes
       # The claim every probe starts from before the owning rule's other conditions apply.
       NEUTRAL = { line_of_business: "liability", estimated_loss: 10_000, vehicle_value: nil,
@@ -15,39 +16,44 @@ module Dispatch
         @proposed = proposed
       end
 
-      # Sorted by field then value, one probe per (field, value). When thresholds next to
-      # each other produce the same probe value, the lower threshold's probe is kept.
+      # Sorted by field, value and owning rule. Probes are deduplicated per (rule, field,
+      # value), never per value alone (Q55): when two rules' thresholds produce the same
+      # probe value, each keeps its own probe built from its own rule's conditions.
       def probes
         seen = {}
-        thresholds.sort_by { |(field, value), _| [field, value] }.each do |(field, value), (rule, source)|
-          [value - 1, value, value + 1].each do |point|
-            key = [field, point.to_r]
-            seen[key] ||= Probe.new(field, point, value, rule.id, source, probe_claim(rule, field, point))
+        thresholds.each do |rule, condition, source|
+          whole_dollar_points(condition.value).each do |point|
+            key = [rule.id, condition.field, point]
+            seen[key] ||= Probe.new(condition.field, point, condition.value, rule.id, source,
+                                    probe_claim(rule, condition.field, point))
           end
         end
-        seen.values.sort_by { |p| [p.field, p.value] }
+        seen.values.sort_by { |p| [p.field, p.value, p.rule_id] }
       end
 
       private
 
-      # {[field, value] => [owning rule, :proposed | :base]}. Deduplicated by field and
-      # value; a threshold present in both sets is built from the proposed rule, since
-      # that is what will ship (Q29 follow-up). Within one set, the rule evaluated first owns it.
+      # [[rule, condition, :proposed | :base]]. Every numeric threshold in the proposed rules,
+      # plus base thresholds whose (field, value) the proposed rules no longer have: a
+      # threshold present in both is built from the proposed rule, since that is what will
+      # ship (Q29 follow-up); one that exists only in base still uses the base rule.
       def thresholds
-        found = {}
-        [[:proposed, @proposed], [:base, @base]].each do |source, config|
-          config.rules.each do |rule|
-            rule.conditions.select(&:numeric_threshold?).each do |condition|
-              found[[condition.field, condition.value]] = [rule, source] unless known?(found, condition)
-            end
-          end
-        end
-        found
+        proposed = numeric_conditions(@proposed).map { |rule, c| [rule, c, :proposed] }
+        shipped = proposed.map { |_, c, _| [c.field, c.value.to_r] }
+        base = numeric_conditions(@base).reject { |_, c| shipped.include?([c.field, c.value.to_r]) }
+        proposed + base.map { |rule, c| [rule, c, :base] }
       end
 
-      # 50000 and 50000.0 are the same threshold.
-      def known?(found, condition)
-        found.keys.any? { |field, value| field == condition.field && value.to_r == condition.value.to_r }
+      def numeric_conditions(config)
+        config.rules.flat_map { |rule| rule.conditions.select(&:numeric_threshold?).map { |c| [rule, c] } }
+      end
+
+      # Claims are whole dollars (Q1), so probes are too (Q55 G1): floor(t)-1, floor(t),
+      # ceil(t), ceil(t)+1. For a whole-dollar t that is t-1, t, t+1.
+      def whole_dollar_points(threshold)
+        low = threshold.floor
+        high = threshold.ceil
+        [low - 1, low, high, high + 1].uniq
       end
 
       def probe_claim(rule, field, point)
@@ -61,12 +67,16 @@ module Dispatch
         Claim.new(claim_number: "PROBE-#{field}-#{point}", **attrs)
       end
 
+      # A whole-dollar value that satisfies the condition (eq/in values are used as given).
       def satisfying_value(condition)
+        value = condition.value
         case condition.op
-        when "eq", "gte", "lte" then condition.value
-        when "in" then condition.value.first
-        when "gt" then condition.value + 1
-        when "lt" then condition.value - 1
+        when "eq" then value
+        when "in" then value.first
+        when "gte" then value.ceil
+        when "lte" then value.floor
+        when "gt" then value.floor + 1
+        when "lt" then value.ceil - 1
         end
       end
     end
