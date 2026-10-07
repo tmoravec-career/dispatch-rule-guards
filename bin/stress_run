@@ -9,7 +9,8 @@
 #   steps                   p95 and error rate per step reached
 #
 # Stress is informational: after a COMPLETED run this exits 0 whatever the thresholds did.
-# If k6 can't run at all (no binary, app unreachable, script or config error) there is no
+# If k6 can't run at all (no binary, app unreachable, script or config error), or the first
+# step got no successful response (e.g. a wrong token: every request a 401), there is no
 # stress result, and this exits 2, so a broken job is never mistaken for a pass.
 # The capacity audit is a separate step afterwards (bin/capacity_audit) and does fail the job.
 #
@@ -52,6 +53,9 @@ module StressRun
 
     summary = JSON.parse(File.read(options[:summary]))
     report = build_report(summary, output, status.exitstatus)
+    problem = misconfiguration(report)
+    return error("misconfigured run, no stress result: #{problem}") if problem
+
     FileUtils.mkdir_p(File.dirname(options[:report]))
     File.write(options[:report], JSON.pretty_generate(report) + "\n")
     print_report(report, options[:report])
@@ -144,6 +148,20 @@ module StressRun
         "p95_ms" => requests.positive? ? duration["p(95)"]&.round(1) : nil,
         "error_rate" => requests.positive? ? failed["value"] : nil }
     end.sort_by { |s| s["step"] }
+  end
+
+  # BUG-032: if the first, lightest step got no successful response at all (or about 100%
+  # errors), the run measured a misconfiguration (wrong token: every request a 401; wrong
+  # URL; the app failing every request), not the app's breaking point.
+  MISCONFIGURED_ERROR_RATE = 0.99
+
+  def misconfiguration(report)
+    first = report["steps"].first
+    return "the summary has no per-step metrics" unless first
+    return "step 1 (#{first['vus']} VUs) sent no requests" unless first["requests"].positive?
+    return nil if first["error_rate"].to_f < MISCONFIGURED_ERROR_RATE
+
+    "#{(first['error_rate'] * 100).round(1)}% of step 1's #{first['requests']} requests failed "       "(#{first['vus']} VUs); check K6_API_TOKEN (an ops token), K6_BASE_URL and the app log"
   end
 
   # k6 names the metric(s) whose abortOnFail threshold stopped the run:
