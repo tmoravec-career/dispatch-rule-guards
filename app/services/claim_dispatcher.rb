@@ -15,8 +15,15 @@
 # under WAL, which the busy timeout does not retry) never happens. If SQLite still reports
 # BUSY, the attempt rolls back and starts again from a fresh read, up to MAX_BUSY_RETRIES
 # times, so lock contention makes a dispatch wait rather than fail.
+#
+# Precondition: create and redispatch must be called with NO transaction open (BUG-023).
+# Inside an outer transaction the write transaction would only be a savepoint, so the
+# webhook would go out before the real commit, and selection would no longer be a plain
+# read. Outside the test environment both methods raise OuterTransaction instead. Tests run
+# inside a rolled-back transaction by design, so the check is off there.
 class ClaimDispatcher
   class DuplicateClaimNumber < StandardError; end
+  class OuterTransaction < StandardError; end
 
   # Raised inside a write transaction when a concurrent re-dispatch of the same claim
   # committed first. The transaction rolls back and the re-dispatch starts over.
@@ -38,6 +45,11 @@ class ClaimDispatcher
     def after_candidate_selection
       Rails.env.test? ? @after_candidate_selection : nil
     end
+
+    # Whether create and redispatch refuse to run inside an open transaction (BUG-023).
+    def refuses_outer_transaction?
+      !Rails.env.test?
+    end
   end
 
   # `notifier` forces inline delivery through that notifier (tests, tools).
@@ -50,6 +62,7 @@ class ClaimDispatcher
   # Creates and dispatches a claim from validated attributes (Dispatch::ClaimInput).
   # Returns the persisted Claim. Raises DuplicateClaimNumber.
   def create(attributes)
+    refuse_outer_transaction!
     claim = Dispatch::Claim.from_h(attributes)
     # The unique index is the real guard; this read just avoids a pointless dispatch.
     raise DuplicateClaimNumber, claim.claim_number if Claim.exists?(claim_number: claim.claim_number)
@@ -70,6 +83,7 @@ class ClaimDispatcher
   # rules and roster, appends to the history and sends a new event, even if nothing changed.
   # The release and the new assignment commit together, so the claim is never lost between them.
   def redispatch(record)
+    refuse_outer_transaction!
     MAX_STALE_RETRIES.times do
       record.reload
       previous = record.adjuster_id
@@ -94,6 +108,12 @@ class ClaimDispatcher
   end
 
   private
+
+  def refuse_outer_transaction!
+    return unless self.class.refuses_outer_transaction? && ApplicationRecord.connection.transaction_open?
+
+    raise OuterTransaction, "ClaimDispatcher must be called with no transaction open: inside one, the write "                             "would only be a savepoint and the webhook would be sent before the real commit"
+  end
 
   # Runs selection -> seam -> write transaction until the decision commits. The block
   # writes the claim and its event for `result` and returns the event; it runs inside the

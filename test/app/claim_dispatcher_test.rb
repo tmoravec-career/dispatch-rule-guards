@@ -159,4 +159,49 @@ class ClaimDispatcherTest < ActiveSupport::TestCase
     assert_equal %w[2026-10-06T09:00:00.000Z 2026-10-06T09:00:05.000Z],
                  claim.dispatch_events.map { |e| JSON.parse(e.payload)["occurred_at"] }
   end
+
+  # BUG-023: outside test the check is on. Tests run inside a transaction, so one is open here.
+  test "create refuses to run inside an open transaction and writes nothing" do
+    ClaimDispatcher.stub(:refuses_outer_transaction?, true) do
+      assert_raises(ClaimDispatcher::OuterTransaction) { dispatcher.create(claim_attrs("C-1")) }
+    end
+    assert_equal [0, 0, 0], [Claim.count, DispatchEvent.count, open_claims("ADJ-001")]
+  end
+
+  test "redispatch refuses to run inside an open transaction and changes nothing" do
+    claim = dispatcher.create(claim_attrs("C-1"))
+    ClaimDispatcher.stub(:refuses_outer_transaction?, true) do
+      assert_raises(ClaimDispatcher::OuterTransaction) { dispatcher.redispatch(claim) }
+    end
+    assert_equal [1, 1], [claim.reload.dispatch_count, open_claims("ADJ-001")]
+  end
+
+  test "the outer-transaction check is off only in the test environment" do
+    assert Rails.env.test?
+    refute ClaimDispatcher.refuses_outer_transaction?
+    Rails.stub(:env, ActiveSupport::EnvironmentInquirer.new("production")) do
+      assert ClaimDispatcher.refuses_outer_transaction?
+    end
+  end
+end
+
+# The same check with no transaction open: dispatch proceeds normally.
+class ClaimDispatcherNoOuterTransactionTest < ActiveSupport::TestCase
+  include AppTestHelpers
+  self.use_transactional_tests = false
+
+  def teardown
+    DispatchEvent.delete_all
+    Claim.delete_all
+    Adjuster.load_roster!(Dispatch::Roster.from_h({ "adjusters" => background_roster }), reset_open_claims: true)
+    super
+  end
+
+  test "create and redispatch run when no transaction is open" do
+    ClaimDispatcher.stub(:refuses_outer_transaction?, true) do
+      refute ApplicationRecord.connection.transaction_open?
+      claim = ClaimDispatcher.new.create(claim_attrs("C-NT"))
+      assert_equal 2, ClaimDispatcher.new.redispatch(claim).dispatch_count
+    end
+  end
 end
