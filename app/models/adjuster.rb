@@ -36,4 +36,9 @@ class Adjuster < ApplicationRecord
     Dispatch::Adjuster.new(id: id, name: name, active: active, licensed_states: licensed_states, skills: skills,
                            capacity: capacity, open_claims: releasing ? [open_claims - 1, 0].max : open_claims)
   end
+
+  # Full as the engine judges it; capacity 0 is always full (Q17).
+  def at_capacity?
+    to_engine.full?
+  end
 end

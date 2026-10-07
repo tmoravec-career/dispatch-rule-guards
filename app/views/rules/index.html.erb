@@ -1,0 +1,42 @@
+<% content_for :title, "Rules" %>
+<section data-testid="rules-page" aria-labelledby="rules-heading">
+  <h1 id="rules-heading">Dispatch rules</h1>
+  <p>
+    Read-only. Rules are evaluated in priority order (lowest first) and the first match wins.
+    To change them, open a pull request to <code>config/dispatch_rules.json</code>, where the rule-change impact gate runs.
+  </p>
+  <p data-testid="licensing-guardrail" role="note">
+    Licensing is always enforced: a claim is only assigned to an adjuster licensed in its loss state.
+    No rule can turn this off.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Rule</th>
+        <th scope="col">Priority</th>
+        <th scope="col">Conditions (all must hold)</th>
+        <th scope="col">Queue</th>
+        <th scope="col">Required skills</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @rules.each do |rule| %>
+        <tr data-testid="rule-row-<%= rule.id %>">
+          <th scope="row"><%= rule.id %></th>
+          <td data-testid="rule-priority"><%= rule.priority %></td>
+          <td data-testid="rule-conditions"><%= rule.conditions.map(&:to_s).join("; ") %></td>
+          <td data-testid="rule-queue"><%= rule.queue %></td>
+          <td data-testid="rule-skills"><%= rule.required_skills.sort.join(", ") %></td>
+        </tr>
+      <% end %>
+      <tr data-testid="rule-row-<%= Dispatch::GENERAL_INTAKE %>">
+        <th scope="row"><%= Dispatch::GENERAL_INTAKE %></th>
+        <td>Last</td>
+        <td>Any claim that matches no rule above</td>
+        <td data-testid="rule-queue"><%= Dispatch::GENERAL_INTAKE %></td>
+        <td>None</td>
+      </tr>
+    </tbody>
+  </table>
+</section>

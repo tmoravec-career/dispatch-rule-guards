@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= content_for?(:title) ? "#{yield(:title)} | Dispatch Rules Guard" : "Dispatch Rules Guard" %></title>
+  <%= csrf_meta_tags %>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1f2328; line-height: 1.4; }
+    header { background: #24292f; padding: .6rem 1.5rem; }
+    header a { color: #fff; margin-right: 1.25rem; text-decoration: none; }
+    header a:hover, header a:focus { text-decoration: underline; }
+    main { padding: 1rem 1.5rem 2rem; max-width: 72rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: .75rem; }
+    th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #d0d7de; vertical-align: top; }
+    thead th { background: #f6f8fa; }
+    .field { margin-bottom: .9rem; }
+    .field label { display: block; font-weight: 600; margin-bottom: .2rem; }
+    .field.checkbox label { display: inline; }
+    input[type=text], select { padding: .3rem; min-width: 14rem; }
+    [aria-invalid=true] { border: 2px solid #cf222e; }
+    .field-error, .alert { color: #cf222e; }
+    .hint { color: #57606a; font-size: .9em; }
+    .filters { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
+    .filters label { display: block; font-weight: 600; }
+    .filters select { min-width: 10rem; }
+    .actions { display: flex; gap: .5rem; margin-top: .75rem; }
+    button { padding: .35rem .9rem; cursor: pointer; }
+    .badge { display: inline-block; padding: 0 .45rem; border-radius: .75rem; font-size: .85em; background: #eaeef2; }
+    .badge.assigned { background: #dafbe1; }
+    .badge.unassigned, .badge.full { background: #ffebe9; }
+    dl.values { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; }
+    dl.values dt { font-weight: 600; }
+    dl.values dd { margin: 0; }
+    .notice { background: #ddf4ff; padding: .5rem .75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Main">
+      <%= link_to "Work queue", claims_path %>
+      <%= link_to "File a claim", new_claim_path %>
+      <%= link_to "Adjusters", adjusters_path %>
+      <%= link_to "Rules", rules_path %>
+    </nav>
+  </header>
+  <main>
+    <%= yield %>
+  </main>
+</body>
+</html>

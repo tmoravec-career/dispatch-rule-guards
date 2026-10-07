@@ -1,0 +1,68 @@
+<% content_for :title, "Claim #{@claim.claim_number}" %>
+<section data-testid="claim-detail" aria-labelledby="claim-heading">
+  <h1 id="claim-heading">Claim <span data-testid="claim-claim_number"><%= @claim.claim_number %></span></h1>
+
+  <h2>Claim details</h2>
+  <dl class="values">
+    <dt>Line of business</dt>
+    <dd data-testid="claim-line_of_business"><%= @claim.line_of_business %></dd>
+    <dt>Estimated loss</dt>
+    <dd data-testid="claim-estimated_loss"><%= @claim.estimated_loss %></dd>
+    <dt>Vehicle value</dt>
+    <% if @claim.vehicle_value.nil? %>
+      <dd>Not given</dd>
+    <% else %>
+      <dd data-testid="claim-vehicle_value"><%= @claim.vehicle_value %></dd>
+    <% end %>
+    <dt>CAT event</dt>
+    <dd data-testid="claim-cat_event"><%= @claim.cat_event %></dd>
+    <dt>Loss state</dt>
+    <dd data-testid="claim-loss_state"><%= @claim.loss_state %></dd>
+  </dl>
+
+  <div id="dispatch-panel">
+    <%= render "claims/dispatch_panel", claim: @claim %>
+  </div>
+
+  <%= form_with url: redispatch_claim_path(claim_number: @claim.claim_number), id: "redispatch-form",
+                data: { confirm_message: "Re-dispatch #{@claim.claim_number} with the current rules and roster?" } do %>
+    <button type="submit">Re-dispatch</button>
+  <% end %>
+  <p id="redispatch-status" role="status" aria-live="polite"></p>
+</section>
+
+<script>
+  // Re-dispatch (Q51): confirm first, then POST in the background and swap in the
+  // returned dispatch panel. Without JavaScript the form posts and the page reloads.
+  (function () {
+    var form = document.getElementById("redispatch-form");
+    var panel = document.getElementById("dispatch-panel");
+    var status = document.getElementById("redispatch-status");
+    var button = form.querySelector("button");
+    var token = document.querySelector('meta[name="csrf-token"]');
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!window.confirm(form.dataset.confirmMessage)) return;
+
+      button.disabled = true;
+      status.textContent = "Re-dispatching...";
+      fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "text/html",
+                   "X-CSRF-Token": token ? token.content : "" }
+      }).then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.text();
+      }).then(function (html) {
+        panel.innerHTML = html;
+        status.textContent = "Re-dispatched.";
+      }).catch(function () {
+        status.textContent = "Re-dispatch failed. Reload the page to see the claim's current state.";
+      }).finally(function () {
+        button.disabled = false;
+      });
+    });
+  })();
+</script>

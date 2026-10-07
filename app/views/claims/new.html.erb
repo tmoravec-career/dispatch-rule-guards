@@ -1,0 +1,56 @@
+<% content_for :title, "File a claim" %>
+<section data-testid="claim-form" aria-labelledby="claim-form-heading">
+  <h1 id="claim-form-heading">File a claim</h1>
+  <p>The claim is dispatched as soon as it is filed.</p>
+
+  <% if @form.errors.any? %>
+    <p class="alert" role="alert">The claim was not filed. Correct the marked fields and try again.</p>
+  <% end %>
+
+  <%= form_with url: claims_path, scope: :claim, html: { novalidate: true } do |f| %>
+    <div class="field">
+      <%= f.label :claim_number, "Claim number" %>
+      <%= f.text_field :claim_number, value: @form.values["claim_number"], autocomplete: "off",
+                                      **field_aria(@form, "claim_number") %>
+      <%= field_error(@form, "claim_number") %>
+    </div>
+
+    <div class="field">
+      <%= f.label :line_of_business, "Line of business" %>
+      <%= f.select :line_of_business,
+                   options_for_select(Dispatch::LINES_OF_BUSINESS, @form.values["line_of_business"]),
+                   { include_blank: "Choose..." }, field_aria(@form, "line_of_business") %>
+      <%= field_error(@form, "line_of_business") %>
+    </div>
+
+    <div class="field">
+      <%= f.label :estimated_loss, "Estimated loss" %>
+      <%= f.text_field :estimated_loss, value: @form.values["estimated_loss"], inputmode: "decimal",
+                                        placeholder: "$12,000", **field_aria(@form, "estimated_loss") %>
+      <%= field_error(@form, "estimated_loss") %>
+    </div>
+
+    <div class="field">
+      <%= f.label :vehicle_value, "Vehicle value" %>
+      <%= f.text_field :vehicle_value, value: @form.values["vehicle_value"], inputmode: "decimal",
+                                       placeholder: "Optional", **field_aria(@form, "vehicle_value") %>
+      <%= field_error(@form, "vehicle_value") %>
+    </div>
+
+    <div class="field checkbox">
+      <%= f.check_box :cat_event, { checked: @form.cat_event?, **field_aria(@form, "cat_event") }, "1", "0" %>
+      <%= f.label :cat_event, "CAT event" %>
+      <%= field_error(@form, "cat_event") %>
+    </div>
+
+    <div class="field">
+      <%= f.label :loss_state, "Loss state" %>
+      <%= f.select :loss_state, options_for_select(Dispatch::US_STATES, @form.values["loss_state"]),
+                   { include_blank: "Choose..." }, field_aria(@form, "loss_state") %>
+      <%= field_error(@form, "loss_state") %>
+    </div>
+
+    <p class="hint">Money is in whole dollars: 12000, $12,000 and 12,000.00 are all accepted.</p>
+    <button type="submit">File claim</button>
+  <% end %>
+</section>

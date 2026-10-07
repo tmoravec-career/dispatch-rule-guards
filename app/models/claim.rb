@@ -23,6 +23,11 @@ class Claim < ApplicationRecord
     queue == Dispatch::GENERAL_INTAKE || rules.queues.include?(queue)
   end
 
+  # The same set as a sorted list: the work queue's "Queue" filter options (Q35).
+  def self.known_queues(rules)
+    (rules.queues + [Dispatch::GENERAL_INTAKE] + distinct.pluck(:queue)).uniq.sort
+  end
+
   def to_engine
     Dispatch::Claim.new(claim_number: claim_number, line_of_business: line_of_business, estimated_loss: estimated_loss,
                         vehicle_value: vehicle_value, cat_event: cat_event, loss_state: loss_state)

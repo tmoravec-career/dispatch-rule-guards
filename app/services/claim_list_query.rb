@@ -24,15 +24,22 @@ class ClaimListQuery
   end
 
   def result
-    scope = Claim.all
-    FILTERS.each { |name| scope = scope.where(name => @params[name]) if @params.key?(name) }
-    total = scope.count
-    data = scope.newest_first.offset((page - 1) * per_page).limit(per_page).to_a
+    total = filtered.count
+    data = scope.offset((page - 1) * per_page).limit(per_page).to_a
     { "page" => page, "per_page" => per_page, "total" => total,
       "total_pages" => (total + per_page - 1) / per_page, "data" => data.map(&:as_resource) }
   end
 
+  # Every matching claim, newest first and unpaginated: the web work queue (Q35).
+  def scope
+    filtered.newest_first
+  end
+
   private
+
+  def filtered
+    FILTERS.reduce(Claim.all) { |scope, name| @params.key?(name) ? scope.where(name => @params[name]) : scope }
+  end
 
   def validate
     @page = integer_param("page", 1, 1..)
