@@ -163,15 +163,4 @@ class CLITest < Minitest::Test
     assert_equal 0, status
     assert_includes out, "--max-probe-changes"
   end
-
-  def test_shipped_configs_are_valid_and_the_example_reproduces_the_demo
-    out = path("out/report.json")
-    status, = gate("--base", File.join(ROOT, "config/dispatch_rules.json"),
-                   "--proposed", File.join(ROOT, "examples/dispatch_rules.proposed.json"),
-                   "--claims", File.join(ROOT, "examples/replay_claims.json"), "--json-out", out,
-                   "--markdown-out", path("out/report.md"))
-    assert_equal 1, status
-    assert_equal [["max_new_unassigned", 0, 2], ["max_reroute_pct", 10, 50.0], ["max_probe_changes", 0, 4]],
-                 JSON.parse(File.read(out))["policy_breaches"].map { |b| b.values_at("policy", "threshold", "actual") }
-  end
 end

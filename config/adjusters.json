@@ -122,6 +122,260 @@
       ],
       "capacity": 3,
       "open_claims": 0
+    },
+    {
+      "id": "ADJ-009",
+      "name": "Ines Lowry",
+      "active": true,
+      "licensed_states": [
+        "TX"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 15,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-010",
+      "name": "Jamal Ortega",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "LA"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 15,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-011",
+      "name": "Kira Patel",
+      "active": true,
+      "licensed_states": [
+        "FL"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 15,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-012",
+      "name": "Luis Quintero",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "FL"
+      ],
+      "skills": [
+        "auto",
+        "luxury_vehicle"
+      ],
+      "capacity": 8,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-013",
+      "name": "Mara Reyes",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "LA"
+      ],
+      "skills": [
+        "property",
+        "cat",
+        "large_loss"
+      ],
+      "capacity": 16,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-014",
+      "name": "Nolan Shaw",
+      "active": true,
+      "licensed_states": [
+        "FL"
+      ],
+      "skills": [
+        "property",
+        "cat",
+        "large_loss"
+      ],
+      "capacity": 16,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-015",
+      "name": "Opal Tran",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "FL",
+        "LA"
+      ],
+      "skills": [
+        "property",
+        "cat"
+      ],
+      "capacity": 18,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-016",
+      "name": "Priya Usman",
+      "active": true,
+      "licensed_states": [
+        "CA"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 16,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-017",
+      "name": "Quinn Vega",
+      "active": true,
+      "licensed_states": [
+        "CA",
+        "NV"
+      ],
+      "skills": [
+        "auto"
+      ],
+      "capacity": 14,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-018",
+      "name": "Rosa Wade",
+      "active": true,
+      "licensed_states": [
+        "CA",
+        "AZ",
+        "NV"
+      ],
+      "skills": [
+        "property"
+      ],
+      "capacity": 18,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-019",
+      "name": "Sam Xu",
+      "active": true,
+      "licensed_states": [
+        "NY",
+        "NJ"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 16,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-020",
+      "name": "Tara Young",
+      "active": true,
+      "licensed_states": [
+        "NY",
+        "NJ"
+      ],
+      "skills": [
+        "property"
+      ],
+      "capacity": 12,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-021",
+      "name": "Uma Zeller",
+      "active": true,
+      "licensed_states": [
+        "GA",
+        "FL"
+      ],
+      "skills": [
+        "auto",
+        "large_loss",
+        "property"
+      ],
+      "capacity": 12,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-022",
+      "name": "Victor Abbott",
+      "active": true,
+      "licensed_states": [
+        "AZ",
+        "NV"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 10,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-023",
+      "name": "Wren Baker",
+      "active": true,
+      "licensed_states": [
+        "CO",
+        "WY"
+      ],
+      "skills": [
+        "auto",
+        "large_loss",
+        "property"
+      ],
+      "capacity": 12,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-024",
+      "name": "Xavi Cole",
+      "active": true,
+      "licensed_states": [
+        "LA",
+        "GA"
+      ],
+      "skills": [
+        "auto",
+        "property"
+      ],
+      "capacity": 10,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-025",
+      "name": "Yara Diaz",
+      "active": true,
+      "licensed_states": [
+        "FL",
+        "LA"
+      ],
+      "skills": [
+        "property",
+        "cat"
+      ],
+      "capacity": 12,
+      "open_claims": 0
     }
   ]
 }
