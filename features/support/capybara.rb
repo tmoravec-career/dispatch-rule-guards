@@ -18,8 +18,11 @@ Capybara.register_driver(:headless_chrome) do |app|
   options.add_argument("--disable-dev-shm-usage")
   options.add_argument("--disable-search-engine-choice-screen")
   options.add_argument("--no-first-run")
-  # Containers and most CI runners have no user namespaces for Chrome's sandbox.
-  options.add_argument("--no-sandbox") if ENV["CI"]
+  # Chrome refuses to start sandboxed as root (typical in Docker), and most CI runners have
+  # no user namespaces for its sandbox. Ruby on Windows reports uid 0 for everyone, so
+  # root is only checked elsewhere.
+  running_as_root = !Gem.win_platform? && Process.uid.zero?
+  options.add_argument("--no-sandbox") if ENV["CI"] || running_as_root
   Capybara::Selenium::Driver.new(app, browser: :chrome, options: options)
 end
 

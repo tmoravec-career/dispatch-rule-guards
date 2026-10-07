@@ -28,6 +28,6 @@ The app must run as a **single Puma process** (see `config/puma.rb`): the rate l
 - **Development:** API tokens default to `dev-ops-token:ops,dev-adjuster-token:adjuster`. `SECRET_KEY_BASE` isn't needed; Rails keeps a generated one in `tmp/local_secret.txt`.
 - **Test:**
   - `DB_POOL` (default 25) sets the connection pool. The `@concurrency` scenarios need at least N + 1 connections.
-  - `CI`: when set, headless Chrome starts with `--no-sandbox`.
+  - `CI`: when set, or when the suite runs as root (outside Windows), headless Chrome starts with `--no-sandbox`.
   - `CONTRACTS=1` runs the JSON Schema contract tests in the plain engine suite.
 - **Tasks:** `bin/rails dispatch:demo_claims` reads `COUNT` (default 50) and `SEED` (the generator's default seed).
