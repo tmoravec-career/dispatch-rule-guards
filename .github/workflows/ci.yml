@@ -187,6 +187,14 @@ jobs:
       K6_API_TOKEN: ci-ops-token
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # BUG-028: reports/ is gitignored, so it doesn't exist after checkout. If a compose bind
+      # (./reports, ./reports/k6) got there first, the rootful daemon would create it as root and
+      # every later write by the runner (or by k6, uid 12345, or the test image, uid 1000) would
+      # get Permission denied. Create it now, as the runner, writable by every container user.
+      - name: Create the bind-mounted reports directories
+        run: |
+          mkdir -p reports/k6
+          chmod 777 reports reports/k6
       - name: Validate docker-compose.yml
         run: docker compose --profile test --profile load config --quiet
       - name: Build the app and test images
@@ -201,9 +209,7 @@ jobs:
           echo "GET /api/claims/stats -> $code"
           test "$code" = 200
       - name: k6 smoke from the compose k6 service
-        run: |
-          mkdir -p reports/k6 && chmod 777 reports/k6
-          docker compose --profile load run --rm k6
+        run: docker compose --profile load run --rm k6
       - name: Capacity audit after the k6 run
         run: docker compose exec -T app bin/capacity_audit | tee reports/k6/capacity-audit-docker-smoke.txt
       - name: App logs
