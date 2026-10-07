@@ -4,10 +4,14 @@
 #
 # timeout: the busy timeout in ms. Concurrent writers wait for SQLite's write lock
 # instead of failing with SQLite3::BusyException (Q37).
+# default_transaction_mode: every transaction is BEGIN IMMEDIATE, taking the write lock up
+# front so the busy timeout always applies (Q57). Rails 7.2 has no setting of its own for
+# this; it hands the whole config to SQLite3::Database.new, and the sqlite3 gem honours it.
 default: &default
   adapter: sqlite3
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   timeout: 5000
+  default_transaction_mode: immediate
 
 development:
   <<: *default

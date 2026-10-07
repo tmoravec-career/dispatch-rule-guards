@@ -10,9 +10,11 @@
 #      the slot, so the transaction rolls back and step 1 runs again, afresh, excluding
 #      that adjuster. A claim is left unassigned only when every qualified adjuster is full.
 #
-# The first statement of each write transaction is a write, so SQLite takes the write lock
-# (waiting out the busy timeout) before reading anything; a read-to-write upgrade, which
-# fails with SQLITE_BUSY_SNAPSHOT under WAL, never happens.
+# Write transactions begin IMMEDIATE (database.yml, Q57), so SQLite takes the write lock at
+# BEGIN, waiting out the busy timeout, and a read-to-write upgrade (SQLITE_BUSY_SNAPSHOT
+# under WAL, which the busy timeout does not retry) never happens. If SQLite still reports
+# BUSY, the attempt rolls back and starts again from a fresh read, up to MAX_BUSY_RETRIES
+# times, so lock contention makes a dispatch wait rather than fail.
 class ClaimDispatcher
   class DuplicateClaimNumber < StandardError; end
 
@@ -21,6 +23,7 @@ class ClaimDispatcher
   class StaleClaim < StandardError; end
 
   MAX_STALE_RETRIES = 10
+  MAX_BUSY_RETRIES = 3
 
   class << self
     # Test-only race seam (STEP_GLOSSARY.md section 9): called as hook.call(claim, result)
@@ -96,16 +99,25 @@ class ClaimDispatcher
   # transaction, after the slot is claimed (and the previous one released).
   def decide_and_write(claim, releasing: nil)
     excluded = []
+    busy_retries = 0
     loop do
       result = @engine.decide(claim, Adjuster.engine_roster(releasing: releasing), exclude: excluded)
       self.class.after_candidate_selection&.call(claim, result)
 
-      event = ApplicationRecord.transaction(requires_new: true) do
-        written = yield(result)
-        Adjuster.release_slot(releasing) if releasing
-        raise ActiveRecord::Rollback if result.assigned? && !Adjuster.take_slot(result.adjuster_id)
+      begin
+        event = ApplicationRecord.transaction(requires_new: true) do
+          written = yield(result)
+          Adjuster.release_slot(releasing) if releasing
+          raise ActiveRecord::Rollback if result.assigned? && !Adjuster.take_slot(result.adjuster_id)
 
-        written
+          written
+        end
+      rescue ActiveRecord::StatementInvalid => e
+        raise unless busy?(e) && (busy_retries += 1) <= MAX_BUSY_RETRIES
+
+        # Everything in the transaction, the slot included, rolled back. Start over afresh.
+        Rails.logger.warn("dispatch #{claim.claim_number}: database busy; retry #{busy_retries} of #{MAX_BUSY_RETRIES}")
+        next
       end
       return event if event
 
@@ -113,6 +125,10 @@ class ClaimDispatcher
       Rails.logger.info("dispatch #{claim.claim_number}: lost the race for #{result.adjuster_id}; re-selecting")
       excluded << result.adjuster_id
     end
+  end
+
+  def busy?(error)
+    error.cause.is_a?(SQLite3::BusyException)
   end
 
   def create_event(record, claim, result, sequence:)

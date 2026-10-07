@@ -104,6 +104,52 @@ class ClaimDispatcherTest < ActiveSupport::TestCase
     assert_equal 1, open_claims("ADJ-001") + open_claims("ADJ-002"), "the claim holds exactly one slot"
   end
 
+  # Raises what the SQLite adapter raises for SQLITE_BUSY: StatementInvalid caused by BusyException.
+  def raise_busy
+    raise SQLite3::BusyException, "database is locked"
+  rescue SQLite3::BusyException
+    raise ActiveRecord::StatementInvalid, "SQLite3::BusyException: database is locked"
+  end
+
+  # Fails the first `failures` slot claims with BUSY after the UPDATE ran, so a retry that
+  # didn't roll back would count the slot twice.
+  def with_busy_slot_claims(failures)
+    calls = 0
+    take_slot = Adjuster.method(:take_slot)
+    Adjuster.stub(:take_slot, lambda { |id|
+      calls += 1
+      taken = take_slot.call(id)
+      raise_busy if calls <= failures
+      taken
+    }) { yield }
+    calls
+  end
+
+  test "every environment's transactions begin IMMEDIATE (Q57)" do
+    %w[development test production].each do |env|
+      config = ActiveRecord::Base.configurations.configs_for(env_name: env).first.configuration_hash
+      assert_equal "immediate", config[:default_transaction_mode].to_s, env
+    end
+    assert_equal "immediate", Claim.connection.raw_connection.instance_variable_get(:@default_transaction_mode).to_s
+  end
+
+  test "a busy database is retried and the slot is counted once" do
+    claim = nil
+    calls = with_busy_slot_claims(1) { claim = dispatcher.create(claim_attrs("C-1")) }
+    assert_equal 2, calls
+    assert_equal ["assigned", "ADJ-001"], [claim.status, claim.adjuster_id]
+    assert_equal [1, 0], [open_claims("ADJ-001"), open_claims("ADJ-002")]
+    assert_equal [1, 1], [Claim.count, DispatchEvent.count]
+  end
+
+  test "after 3 busy retries the error is raised and nothing is written" do
+    calls = with_busy_slot_claims(4) do
+      assert_raises(ActiveRecord::StatementInvalid) { dispatcher.create(claim_attrs("C-1")) }
+    end
+    assert_equal 4, calls
+    assert_equal [0, 0, 0], [open_claims("ADJ-001"), Claim.count, DispatchEvent.count]
+  end
+
   test "occurred_at and created_at come from the injectable clock" do
     Clock.freeze_at(Time.utc(2026, 10, 6, 9, 0, 0))
     claim = dispatcher.create(claim_attrs("C-1"))
