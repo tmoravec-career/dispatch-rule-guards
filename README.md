@@ -8,8 +8,7 @@ It's also a record of **how I use AI to develop and test**. I wrote one document
 
 | | |
 |---|---|
-| Acceptance criteria | **331 Cucumber scenarios** (3,083 steps), written before any code |
-| Unit and app tests | 252 engine tests (about 0.6 s, no database) and 83 Rails app tests |
+| Tests | **675 in all**: 331 Cucumber scenarios (3,083 steps, written before any code), 228 engine unit tests (about 0.6 s, no database), 83 Rails app tests, 24 tooling tests and 9 k6 load scenarios |
 | Bugs found by the agents | **33**: 31 fixed, each with a regression test, and 2 deferred. See the [bug log](docs/qa/BUGS.md) |
 | QA and review verdicts | Every phase got at least one FAIL from QA or REQUEST CHANGES from the reviewer before it passed. See the [QA rounds](docs/qa/QA_RUNS.md) |
 | Product decisions | 59, each recorded with who decided it. See [decided questions](docs/specs/OPEN_QUESTIONS.md) |
