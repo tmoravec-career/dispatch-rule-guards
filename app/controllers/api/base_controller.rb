@@ -25,6 +25,15 @@ module Api
 
     attr_reader :api_role
 
+    # Rails' request logging reads `params`, which parses the body before any of this
+    # controller runs; a body that isn't valid UTF-8 then fails as a framework 400 (an HTML
+    # page in development and test), ahead of auth and of our own check. The API never
+    # reads its body through `params`, so mark the body parameters as empty up front (Q57).
+    def process_action(...)
+      request.request_parameters = {}
+      super
+    end
+
     # The scheme is "Bearer" and the token is matched exactly, case-sensitively (Q39).
     def authenticate!
       header = request.authorization

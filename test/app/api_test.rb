@@ -39,6 +39,18 @@ class ApiTest < ActionDispatch::IntegrationTest
     assert_equal "malformed_json", errors.first["code"]
   end
 
+  test "a body that isn't valid UTF-8 is a JSON 400 malformed_json, after auth (Q57)" do
+    body = "{\"claim_number\": \"\xFF\xFE\", \"loss_state\": \"TX\"}".b
+    post "/api/claims", params: body, headers: { "Content-Type" => "application/json" }
+    assert_response :unauthorized
+
+    post "/api/claims", params: body, headers: auth.merge("Content-Type" => "application/json")
+    assert_response :bad_request
+    assert_equal "application/json", response.media_type
+    assert_equal [{ "field" => nil, "code" => "malformed_json" }], errors
+    assert_equal 0, Claim.count
+  end
+
   test "a JSON body that is not an object is a 422" do
     post "/api/claims", params: "[1, 2]", headers: auth.merge("Content-Type" => "application/json; charset=utf-8")
     assert_response :unprocessable_entity
