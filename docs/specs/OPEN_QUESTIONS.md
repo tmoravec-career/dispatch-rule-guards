@@ -670,3 +670,21 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
 - **Minor.** Markdown on stdout uses LF on every platform. `duplicate_priority` is not reported for a priority that is already `invalid_value`.
 - **G6 (added after the phase 2 re-verify).** `eq`/`in` values on enum fields must be valid members: `line_of_business` ∈ {auto, property, liability}, and `loss_state` must be an uppercase 2-letter USPS code (the same check as for claims). Otherwise the result is `invalid_value` at `.value`. Without this, a rule like `loss_state eq "tx"` silently never matches.
 - **Root README (Q53).** It's written in the final docs phase. Until then, `examples/README.md` carries the two commands.
+
+---
+
+### Q56. Findings from the phase 2 code review
+
+**Decision: orchestrator, delegated by Tim, 2026-10-06.**
+
+- **M1, probe retention (supersedes part of the Q29 follow-up).** A base threshold is probed, built from its base owning rule, whenever **that rule** no longer has the same (field, op, value) condition in the proposed rules. This includes when the rule was deleted. Before, the probe was dropped if *any* proposed rule had that (field, value), which hid a deleted rule when another rule kept the same number. Proposed thresholds are always probed, as before.
+- **Report item fields (Q32 addendum).** The extra JSON item fields are part of the contract:
+  - `newly_unassigned`: `base_queue`, `base_adjuster`
+  - `newly_assigned`: `adjuster`, `base_queue`, `base_reason_code`
+  - `rerouted`: `base_matched_rule`, `proposed_matched_rule`
+  - `queue_changes`: `delta`
+  - `boundary_probes`: `threshold`, `threshold_rule`, `threshold_source`, `changed`
+
+  So are the Markdown PASS/FAIL headline, the "Newly assigned (informational)" subsection, and the one-line stdout summary when `--markdown-out` is given.
+- **Breach display.** If a rounded `actual` equals its threshold, show two decimals (e.g. `10.04`), so a breach never displays as "10.0 > 10".
+- **Markdown safety.** Table cells escape `|` and collapse newlines.
