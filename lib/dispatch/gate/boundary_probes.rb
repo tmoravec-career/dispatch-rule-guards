@@ -16,19 +16,20 @@ module Dispatch
         @proposed = proposed
       end
 
-      # Sorted by field, value and owning rule. Probes are deduplicated per (rule, field,
-      # value), never per value alone (Q55): when two rules' thresholds produce the same
-      # probe value, each keeps its own probe built from its own rule's conditions.
+      # Sorted by field, value and owning rule. Probes are deduplicated per owning rule,
+      # field and value, never per value alone (Q55). The owning rule is identified by its
+      # source as well as its id: a base rule and a proposed rule can share an id but have
+      # different conditions, so each keeps its own probes built from its own conditions.
       def probes
         seen = {}
         thresholds.each do |rule, condition, source|
           whole_dollar_points(condition.value).each do |point|
-            key = [rule.id, condition.field, point]
+            key = [source, rule.id, condition.field, point]
             seen[key] ||= Probe.new(condition.field, point, condition.value, rule.id, source,
                                     probe_claim(rule, condition.field, point))
           end
         end
-        seen.values.sort_by { |p| [p.field, p.value, p.rule_id] }
+        seen.values.sort_by { |p| [p.field, p.value, p.rule_id, p.source.to_s] }
       end
 
       private

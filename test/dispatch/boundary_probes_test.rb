@@ -27,6 +27,20 @@ class BoundaryProbesTest < Minitest::Test
     assert_equal [59_999, 60_000, 60_001, 99_999, 100_000, 100_001], values(list, "vehicle_value")
   end
 
+  # QA L1: a base rule and a proposed rule that share an id are different owners. The
+  # base-only threshold keeps its own probes, built from the base rule's conditions.
+  def test_same_rule_id_in_base_and_proposed_keeps_both_owners_probes
+    base = { "rules" => [{ "id" => "big", "priority" => 10, "queue" => "big", "required_skills" => [], "conditions" => [
+      { "field" => "line_of_business", "op" => "eq", "value" => "property" },
+      { "field" => "estimated_loss", "op" => "gte", "value" => 50_000 }
+    ] }] }
+    proposed = with_condition(base, "big", "estimated_loss", "gte", 50_001)
+    proposed["rules"][0]["conditions"][0]["value"] = "auto"
+    list = probes(base, proposed).map { |p| [p.value, p.source, p.claim.line_of_business] }
+    assert_equal [[49_999, :base, "property"], [50_000, :base, "property"], [50_000, :proposed, "auto"],
+                  [50_001, :base, "property"], [50_001, :proposed, "auto"], [50_002, :proposed, "auto"]], list
+  end
+
   def two_rule_hash(op)
     { "rules" => [
       { "id" => "big_property", "priority" => 10, "queue" => "big_property", "required_skills" => [],
