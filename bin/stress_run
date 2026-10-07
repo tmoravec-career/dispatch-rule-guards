@@ -1,0 +1,209 @@
+#!/usr/bin/env ruby
+# Stress runner (docs/specs/LOAD_TEST_CRITERIA.md "Stress", OPEN_QUESTIONS.md Q49).
+#
+# Runs the k6 `stress` profile (10 -> 320 VUs in 1-minute steps; the profile sets abortOnFail on
+# the three gate thresholds, so k6 stops at the first breach) and writes stress_report.json:
+#   breaking_point_vus      VUs of the step where a threshold first failed; null if the app
+#                           survived the top step
+#   first_failed_threshold  http_req_failed | http_req_duration | checks, or null
+#   steps                   p95 and error rate per step reached
+#
+# Stress is informational: after a COMPLETED run this exits 0 whatever the thresholds did.
+# If k6 can't run at all (no binary, app unreachable, script or config error), or the first
+# step got no successful response (e.g. a wrong token: every request a 401), there is no
+# stress result, and this exits 2, so a broken job is never mistaken for a pass.
+# The capacity audit is a separate step afterwards (bin/capacity_audit) and does fail the job.
+#
+# Plain Ruby, no bundle. Environment:
+#   K6_BASE_URL   default http://localhost:3000     K6_API_TOKEN  an ops token
+#   K6_BIN        the k6 executable (default: k6 on PATH; on Windows also C:/Program Files/k6/k6.exe)
+#   K6_VU_SCALE, K6_DURATION_SCALE, K6_RUN_ID       passed through to the script (local runs)
+# Options:
+#   --report PATH       default reports/k6/stress_report.json
+#   --summary PATH      default reports/k6/k6-summary-stress.json
+
+require "json"
+require "net/http"
+require "open3"
+require "optparse"
+require "fileutils"
+require "uri"
+
+module StressRun
+  ROOT = File.expand_path("..", __dir__)
+  SCRIPT = File.join(ROOT, "load", "k6", "dispatch.js")
+  GATE_METRICS = %w[http_req_failed http_req_duration checks].freeze
+  THRESHOLDS_FAILED = 99
+  ERROR = 2
+
+  module_function
+
+  def main(argv)
+    $stdout.sync = true
+    options = parse(argv)
+    base_url = ENV.fetch("K6_BASE_URL", "http://localhost:3000").chomp("/")
+    k6 = k6_binary or return error("k6 not found: set K6_BIN or put k6 on PATH")
+    reachable?(base_url) or return error("the app is not reachable at #{base_url}/up")
+
+    FileUtils.mkdir_p(File.dirname(options[:summary]))
+    FileUtils.rm_f(options[:summary])
+    output, status = run_k6(k6, options[:summary])
+    return error("k6 did not complete (exit #{status.exitstatus.inspect}); no stress result") unless [0, THRESHOLDS_FAILED].include?(status.exitstatus)
+    return error("k6 wrote no summary at #{options[:summary]}") unless File.file?(options[:summary])
+
+    summary = JSON.parse(File.read(options[:summary]))
+    report = build_report(summary, output, status.exitstatus)
+    problem = misconfiguration(report)
+    return error("misconfigured run, no stress result: #{problem}") if problem
+
+    FileUtils.mkdir_p(File.dirname(options[:report]))
+    File.write(options[:report], JSON.pretty_generate(report) + "\n")
+    print_report(report, options[:report])
+    0
+  rescue JSON::ParserError => e
+    error("unreadable k6 summary: #{e.message}")
+  end
+
+  def parse(argv)
+    options = { report: File.join(ROOT, "reports", "k6", "stress_report.json"),
+                summary: File.join(ROOT, "reports", "k6", "k6-summary-stress.json") }
+    OptionParser.new do |o|
+      o.banner = "Usage: bin/stress_run [--report PATH] [--summary PATH]"
+      o.on("--report PATH") { |v| options[:report] = File.expand_path(v) }
+      o.on("--summary PATH") { |v| options[:summary] = File.expand_path(v) }
+    end.parse!(argv)
+    options
+  end
+
+  def error(message)
+    warn "stress_run: ERROR: #{message}"
+    ERROR
+  end
+
+  # K6_BIN when set (and only it: an explicit binary never silently falls back), else k6 on
+  # PATH, else the Windows installer's default location.
+  def k6_binary(env = ENV)
+    explicit = env["K6_BIN"].to_s
+    return (File.file?(explicit) && File.executable?(explicit) ? explicit : nil) unless explicit.empty?
+
+    candidates = env.fetch("PATH", "").split(File::PATH_SEPARATOR).flat_map { |dir| [File.join(dir, "k6"), File.join(dir, "k6.exe")] }
+    candidates << "C:/Program Files/k6/k6.exe" if Gem.win_platform?
+    candidates.find { |path| File.file?(path) && File.executable?(path) }
+  end
+
+  def reachable?(base_url)
+    uri = URI("#{base_url}/up")
+    Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 5, read_timeout: 5) do |http|
+      http.get(uri.request_uri).is_a?(Net::HTTPSuccess)
+    end
+  rescue StandardError
+    false
+  end
+
+  # Streams k6's output through, and keeps it to find which threshold aborted the run.
+  def run_k6(k6, summary_path)
+    env = { "K6_PROFILE" => "stress" }
+    args = [k6, "run", "--quiet", "--no-color", "-e", "K6_PROFILE=stress", "--summary-export", summary_path, SCRIPT]
+    output = +""
+    status = Open3.popen2e(env, *args, chdir: ROOT) do |stdin, out, wait|
+      stdin.close
+      out.each_line do |line|
+        output << line
+        $stdout.print line
+      end
+      wait.value
+    end
+    [output, status]
+  rescue SystemCallError => e
+    warn "stress_run: could not start k6: #{e.message}"
+    [+"", Struct.new(:exitstatus).new(nil)]
+  end
+
+  def build_report(summary, output, exit_status)
+    metrics = summary.fetch("metrics", {})
+    steps = steps_from(metrics)
+    breached = exit_status == THRESHOLDS_FAILED
+    breaking_step = breached ? steps.reverse.find { |s| s["requests"].positive? } : nil
+    {
+      "profile" => "stress",
+      "completed" => true,
+      "k6_exit_status" => exit_status,
+      "breaking_point_vus" => breaking_step && breaking_step["vus"],
+      "breaking_point_step" => breaking_step && breaking_step["step"],
+      "first_failed_threshold" => breached ? first_failed_threshold(output, metrics) : nil,
+      "thresholds" => GATE_METRICS.to_h { |m| [m, threshold_failed?(metrics, m) ? "failed" : "passed"] },
+      "test_run_duration_ms" => test_run_duration_ms(summary)&.round,
+      "steps" => steps
+    }
+  end
+
+  # Per-step observers from the script: http_req_duration{step:step<N>_vus<V>} and
+  # http_req_failed{step:...}. The failed-rate metric's passes + fails is the request count.
+  def steps_from(metrics)
+    metrics.keys.filter_map { |key| key.match(/\Ahttp_req_failed\{step:step(\d+)_vus(\d+)\}\z/) }.map do |m|
+      failed = metrics[m[0]]
+      duration = metrics["http_req_duration{step:step#{m[1]}_vus#{m[2]}}"] || {}
+      requests = failed.fetch("passes", 0).to_i + failed.fetch("fails", 0).to_i
+      { "step" => m[1].to_i, "vus" => m[2].to_i, "requests" => requests,
+        "p95_ms" => requests.positive? ? duration["p(95)"]&.round(1) : nil,
+        "error_rate" => requests.positive? ? failed["value"] : nil }
+    end.sort_by { |s| s["step"] }
+  end
+
+  # BUG-032: if the first, lightest step got no successful response at all (or about 100%
+  # errors), the run measured a misconfiguration (wrong token: every request a 401; wrong
+  # URL; the app failing every request), not the app's breaking point.
+  MISCONFIGURED_ERROR_RATE = 0.99
+
+  def misconfiguration(report)
+    first = report["steps"].first
+    return "the summary has no per-step metrics" unless first
+    return "step 1 (#{first['vus']} VUs) sent no requests" unless first["requests"].positive?
+    return nil if first["error_rate"].to_f < MISCONFIGURED_ERROR_RATE
+
+    "#{format('%.1f', first['error_rate'] * 100)}% of step 1's #{first['requests']} requests failed "       "(#{first['vus']} VUs); check K6_API_TOKEN (an ops token), K6_BASE_URL and the app log"
+  end
+
+  # k6 names the metric(s) whose abortOnFail threshold stopped the run:
+  #   thresholds on metrics 'http_req_duration' were crossed; at least one has abortOnFail enabled ...
+  # Otherwise (e.g. a breach only visible at the end), the first gate metric that failed.
+  def first_failed_threshold(output, metrics)
+    crossed = output[/thresholds on metrics '([^']+)'/, 1]
+    from_log = crossed&.split(",")&.map(&:strip)&.find { |m| GATE_METRICS.include?(m) }
+    from_log || GATE_METRICS.find { |m| threshold_failed?(metrics, m) }
+  end
+
+  # state.testRunDurationMs when the export has it. k6 v2's --summary-export doesn't, but every
+  # counter's rate is count / test-run duration, so the duration is count / rate.
+  def test_run_duration_ms(summary)
+    from_state = summary.dig("state", "testRunDurationMs")
+    return from_state if from_state
+
+    counter = %w[iterations http_reqs].map { |m| summary.dig("metrics", m) }.find { |c| c && c["rate"].to_f.positive? }
+    counter && (counter["count"] / counter["rate"] * 1000.0)
+  end
+
+  # In the --summary-export format each threshold maps to true when it FAILED.
+  def threshold_failed?(metrics, metric)
+    (metrics.dig(metric, "thresholds") || {}).values.any?(true)
+  end
+
+  def print_report(report, path)
+    puts
+    if report["breaking_point_vus"]
+      puts "Stress breaking point: #{report['breaking_point_vus']} VUs (step #{report['breaking_point_step']}); " \
+           "first failed threshold: #{report['first_failed_threshold']}"
+    else
+      top = report["steps"].last
+      puts "Stress breaking point: none; the app held every threshold up to the top step (#{top && top['vus']} VUs)"
+    end
+    report["steps"].each do |s|
+      puts format("  step %<step>d  %<vus>4d VUs  %<requests>6d requests  p95 %<p95>s ms  errors %<err>s",
+                  step: s["step"], vus: s["vus"], requests: s["requests"],
+                  p95: s["p95_ms"] || "-", err: s["error_rate"] ? format("%.2f%%", s["error_rate"] * 100) : "-")
+    end
+    puts "Report: #{path} (informational; exit 0)"
+  end
+end
+
+exit StressRun.main(ARGV) if $PROGRAM_NAME == __FILE__

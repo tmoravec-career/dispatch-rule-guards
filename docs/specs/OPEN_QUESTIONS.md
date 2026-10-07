@@ -13,6 +13,7 @@ These started as the real ambiguities in `docs/PRODUCT_BRIEF.md`. **Every questi
   - Q43–Q51 (second batch): stats, status-code invariant, webhook integrity, rate limiting, load profiles, money input, re-dispatch confirmation.
   - All are marked "Decision: added".
 - **Deferred:** Q52.
+- **Phase 2 decisions:** Q53 (the canonical demo command) and Q54 (the shipped roster for seeded runs), marked "Decision: analyst default, delegated by Tim".
 
 Where a scope addition needed details the request didn't give, the detail is stated in the question as part of the decided spec and labelled *analyst detail*. The feature files in `features/` encode all of it.
 
@@ -561,3 +562,169 @@ Q23 has been updated to match.
 Adjusters being unavailable for a date range (holiday, sick leave), which would make them temporarily ineligible.
 
 **Decision:** deferred, Tim, 2026-10-06. Out of scope for now; no scenarios. Until then, `active: false` is the only way to take an adjuster out of rotation.
+
+---
+
+# Phase 2 product decisions (raised by the developer on `phase-2/engine`)
+
+## L. Demo and shipped data
+
+### Q53. What is the canonical demo command?
+The brief's demo numbers (2 stranded, 50.0% rerouted, 4 probe changes) come from the 10-claim replay set and the 8-adjuster roster in `rule_change_gate.feature`'s Background. The bare command `bin/rule_diff --base config/dispatch_rules.json --proposed examples/dispatch_rules.proposed.json` instead replays seed 42 × 200 generated claims against the shipped roster. It gives different numbers: exit 1, 1 stranded, 4.0% rerouted, 4 probe changes.
+
+**Decision:** analyst default, delegated by Tim, 2026-10-06. There are two named commands, and the docs say which is which.
+
+1. **The demo** (exact, reproduces the brief and the `@demo` scenario):
+   ```
+   bin/rule_diff --base config/dispatch_rules.json \
+                 --proposed examples/dispatch_rules.proposed.json \
+                 --claims examples/replay_claims.json \
+                 --adjusters examples/demo_adjusters.json
+   ```
+   - `examples/demo_adjusters.json` is the 8-adjuster Background roster: today's `config/adjusters.json` content, moved and unchanged.
+   - Pinning `--adjusters` keeps the demo independent of the shipped roster (Q54), so enlarging that roster can never change the demo's numbers.
+   - Expected: exit 1, with breaches exactly `max_new_unassigned` 0 → 2, `max_reroute_pct` 10 → 50.0 and `max_probe_changes` 0 → 4. Newly unassigned are CLM-2003 and CLM-2004 (`luxury_auto`, `qualified_adjusters_at_capacity`). These are the same values the `@demo` scenario asserts.
+2. **The realistic day** is the bare seeded command above. It uses seed 42, 200 claims and the shipped roster `config/adjusters.json`. It must exit 1 with at least one newly stranded claim, but its exact numbers aren't part of the spec. They depend on the seed, the generator and the roster, and the developer records them in `examples/README.md`.
+
+**Docs:** the README and `examples/README.md` lead with command 1, labelled "Demo (the brief's scenario)", followed by command 2, labelled "Realistic day (seeded)". Both show their expected outcome.
+
+**Acceptance checks (developer tests, outside Cucumber):**
+- **Demo command:** a CLI test runs command 1 exactly as written, from the repo root, and asserts the exit code, the three breaches with their actual values, and the two newly unassigned claims.
+- **Shared data:** a data test asserts that `examples/replay_claims.json` has the same 10 claims as the `rule_change_gate.feature` Background, and that `examples/demo_adjusters.json` has the same 8 adjusters. The fixtures can't drift from the spec.
+
+`features/rule_change_gate.feature` needs no change: its Backgrounds keep their own tables and don't read shipped files.
+
+### Q54. What roster ships in `config/adjusters.json` for seeded runs?
+The 8-adjuster, 28-slot Background roster is far too small for a 200-claim day: 177 of 200 seeded claims end up unassigned under **both** rule sets. A seeded run can then hardly detect newly stranded claims.
+
+**Decision:** analyst default, delegated by Tim, 2026-10-06. `config/adjusters.json` becomes a **25-adjuster roster** (24 active), sized from the seed generator's volume mix (`lib/dispatch/scenario_generator.rb`: states weighted TX/FL/CA heaviest, plus CO and WY; 55% auto, 35% property with 30% CAT in TX/FL/LA, 10% liability).
+
+**Hard constraints:**
+- **ADJ-001 to ADJ-008** are kept with exactly their current properties, so the IDs and every Background stay valid (the Backgrounds still use their own tables).
+- **ADJ-004** (CA, NV, AZ; `luxury_vehicle`; capacity 2) stays the **only active `luxury_vehicle` adjuster licensed outside TX/FL**. New `luxury_vehicle` adjusters are licensed in TX and/or FL only. Luxury overflow in CA/NV/AZ therefore still strands, and luxury claims in NY/NJ/GA/LA/CO/WY have no qualified adjuster.
+- **Coverage:** every state the generator emits (TX, FL, CA, NY, LA, AZ, GA, NV, NJ, CO, WY) has at least one active adjuster with `auto` + `large_loss`, and at least one with `property`. TX, FL and LA each have at least one active adjuster with `cat` + `large_loss` and one with `property` + `cat`.
+
+**Adjusters to add** (all `active: true`, `open_claims: 0`):
+
+| id | name | licensed_states | skills | capacity |
+|---|---|---|---|---|
+| ADJ-009 | Ines Lowry | TX | auto, large_loss | 15 |
+| ADJ-010 | Jamal Ortega | TX, LA | auto, large_loss | 15 |
+| ADJ-011 | Kira Patel | FL | auto, large_loss | 15 |
+| ADJ-012 | Luis Quintero | TX, FL | auto, luxury_vehicle | 8 |
+| ADJ-013 | Mara Reyes | TX, LA | property, cat, large_loss | 16 |
+| ADJ-014 | Nolan Shaw | FL | property, cat, large_loss | 16 |
+| ADJ-015 | Opal Tran | TX, FL, LA | property, cat | 18 |
+| ADJ-016 | Priya Usman | CA | auto, large_loss | 16 |
+| ADJ-017 | Quinn Vega | CA, NV | auto | 14 |
+| ADJ-018 | Rosa Wade | CA, AZ, NV | property | 18 |
+| ADJ-019 | Sam Xu | NY, NJ | auto, large_loss | 16 |
+| ADJ-020 | Tara Young | NY, NJ | property | 12 |
+| ADJ-021 | Uma Zeller | GA, FL | auto, large_loss, property | 12 |
+| ADJ-022 | Victor Abbott | AZ, NV | auto, large_loss | 10 |
+| ADJ-023 | Wren Baker | CO, WY | auto, large_loss, property | 12 |
+| ADJ-024 | Xavi Cole | LA, GA | auto, property | 10 |
+| ADJ-025 | Yara Diaz | FL, LA | property, cat | 12 |
+
+**Totals:**
+- 25 adjusters, 24 of them active; ADJ-007 stays inactive.
+- Active capacity is 258: 23 from ADJ-001–008 plus 235 from the new adjusters.
+- Expected assignable demand for a 200-claim day is about 195, so there's roughly 1.3× headroom overall. Every pool (auto, complex, luxury TX/FL, cat_large_loss, coastal, property_standard, CO/WY) has its own headroom.
+
+**What stays unassigned, by design, under base rules (estimated):**
+- About 5 luxury claims in states with no qualified luxury adjuster: NY, NJ, GA, LA, CO, WY.
+- About 2 CA/NV/AZ luxury claims beyond ADJ-004's 2 slots.
+
+That's well under the 10% budget.
+
+**Why the bare seeded command still catches the demo edit:** at `vehicle_value gte 60000`, CA/NV/AZ autos worth $60k–$99k move to `luxury_auto`, where ADJ-004 is already full. Autos in that range in NY/NJ/GA/LA/CO/WY move to a queue with no qualified adjuster. Both groups were assigned under base, so they become newly stranded; expect several.
+
+**Acceptance checks (developer tests in the plain-Ruby engine suite, no DB):**
+1. **Base-rule assignment ≥ 90%:** replay `ScenarioGenerator.new(seed: 42, count: 200).claims`, in order, against `config/dispatch_rules.json` and a fresh copy of `config/adjusters.json`. At least **180 of 200** claims must be assigned. The test prints the actual count and the unassigned claims grouped by reason code on failure.
+2. **Roster invariants:**
+   - Exactly 25 adjusters and unique IDs.
+   - ADJ-001 to ADJ-008 equal the Background table field for field.
+   - The set of active `luxury_vehicle` adjusters with any license outside TX/FL is exactly `[ADJ-004]`, with capacity 2.
+   - The coverage constraints above hold for every generator state.
+   - No adjuster starts with `open_claims > capacity`.
+3. **The realistic day still detects the demo edit:** running command 2 (the bare seeded command) exits **1**, `newly_unassigned` has **at least 1** entry, and `policy_breaches` includes `max_new_unassigned`.
+4. **The demo is unaffected:** the Q53 demo-command test passes. It pins `examples/demo_adjusters.json`, so it doesn't depend on this roster.
+
+If check 1 fails, raise capacity on the pool the failure report names; don't change the constraints. If check 3 fails, that's a product finding, so escalate it rather than tuning the roster until it passes.
+
+The feature Backgrounds keep their own tables and must not read `config/adjusters.json`.
+
+---
+
+### Q55. Gaps found by QA in phase 2 (G1–G5)
+
+**Decision: orchestrator default, delegated by Tim, 2026-10-06.**
+
+- **G1, fractional thresholds.** Probes are always whole dollars, because claims are (Q1). For threshold `t`, probe `floor(t)-1`, `floor(t)`, `ceil(t)` and `ceil(t)+1`, deduplicated. For an integer `t` that is the usual `t-1, t, t+1`.
+- **Probe identity (fixes D3).** Probes are deduplicated per **(rule, field, value)**, never per value alone. Two thresholds that produce the same probe value each get their own probe, built from their own owning rule's conditions.
+- **Non-finite numbers.** Any threshold or claim value that parses to ±Infinity or NaN (e.g. `1e400`) is rejected with `non_numeric_threshold` (rules) or `invalid_value` (claims, roster).
+- **Encoding.** Files that aren't valid UTF-8 are rejected as `malformed_json` at path `$`, with exit 2. A leading UTF-8 BOM is stripped and accepted, since Windows PowerShell 5.1 writes one.
+- **G2.** A rule must have **at least one** condition (`invalid_value` at `rules[i].conditions`). The catch-all is `general_intake`.
+- **G3.** Operator and field types must agree. `gt`/`gte`/`lt`/`lte` are allowed only on numeric fields (`estimated_loss`, `vehicle_value`). `eq`/`in` values must match the field's type (string, number or boolean). A mismatch is `invalid_value`.
+- **G5.** `Roster.new` and `Roster#update` apply the same validation as the file loader.
+- **Minor.** Markdown on stdout uses LF on every platform. `duplicate_priority` is not reported for a priority that is already `invalid_value`.
+- **G6 (added after the phase 2 re-verify).** `eq`/`in` values on enum fields must be valid members: `line_of_business` ∈ {auto, property, liability}, and `loss_state` must be an uppercase 2-letter USPS code (the same check as for claims). Otherwise the result is `invalid_value` at `.value`. Without this, a rule like `loss_state eq "tx"` silently never matches.
+- **Root README (Q53).** It's written in the final docs phase. Until then, `examples/README.md` carries the two commands.
+
+---
+
+### Q56. Findings from the phase 2 code review
+
+**Decision: orchestrator, delegated by Tim, 2026-10-06.**
+
+- **M1, probe retention (supersedes part of the Q29 follow-up).** A base threshold is probed, built from its base owning rule, whenever **that rule** no longer has the same (field, op, value) condition in the proposed rules. This includes when the rule was deleted. Before, the probe was dropped if *any* proposed rule had that (field, value), which hid a deleted rule when another rule kept the same number. Proposed thresholds are always probed, as before.
+- **Report item fields (Q32 addendum).** The extra JSON item fields are part of the contract:
+  - `newly_unassigned`: `base_queue`, `base_adjuster`
+  - `newly_assigned`: `adjuster`, `base_queue`, `base_reason_code`
+  - `rerouted`: `base_matched_rule`, `proposed_matched_rule`
+  - `queue_changes`: `delta`
+  - `boundary_probes`: `threshold`, `threshold_rule`, `threshold_source`, `changed`
+
+  So are the Markdown PASS/FAIL headline, the "Newly assigned (informational)" subsection, and the one-line stdout summary when `--markdown-out` is given.
+- **Breach display.** If a rounded `actual` equals its threshold, show two decimals (e.g. `10.04`), so a breach never displays as "10.0 > 10".
+- **Markdown safety.** Table cells escape `|` and collapse newlines.
+- **M1 follow-up: probe identity is the probe claim.** After applying the Q56 retention rule, probes are deduplicated by **(field, value, probe claim)**. When two owners build an identical claim, it's one probe, and the proposed-sourced one is kept. Without this, the demo's `gte 50000` → `gt 50000` builds the same claim from the base and proposed rules and counts one boundary change twice. Owners that build *different* claims at the same value still each get a probe (L1, M1).
+
+---
+
+### Q57. Decisions from the phase 3a QA round
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07.**
+
+- **SQLite locking under load (D4).** Use `default_transaction_mode: immediate` in every environment, so `BEGIN` takes the write lock up front and the busy timeout always applies. Retry a write transaction that hits `BusyException` up to 3 times. Under concurrent load, a dispatch waits; it never returns 500 because of lock contention.
+- **Webhook deadline (D1, refines Q24).** The 2 s is one **overall wall-clock deadline** per delivery attempt, covering connect, write and read together. A trickling or blackholed endpoint is cut off at 2 s and recorded as `failed`. Delivery runs **off the request thread** in development and production (an in-process queue), and inline in test for determinism, so the API response never waits on a webhook. `pending` is a valid transient state. A transactional outbox with retries is future work, noted in the README.
+- **Page cap (D2).** `page` × `per_page` above 1,000,000 is 422 `out_of_range`.
+- **API tokens (D3).** A duplicate token, or a token containing whitespace, refuses to boot.
+- **Claim numbers (D5).** A claim number with leading or trailing whitespace, or one equal to a reserved route segment (`stats`), is `invalid_value`.
+- **Invalid UTF-8 bodies (D6).** These return JSON 400 `malformed_json` in every environment.
+- **Boot checks.** The webhook URL must be an absolute `http`/`https` URL. A missing rules or roster file gives the standard "refusing to boot" message.
+- **Codes recorded (QA verdict: acceptable).** 415 is `unsupported_media_type`; 500 is `internal_error`. A whole-number float such as `12000.0` is an integer. Money above 2^53−1 is `out_of_range`. `not_configured` is the delivery state when no URL is set.
+- **Capacity audit command.** Both `bin/capacity_audit` and `bin/rails dispatch:capacity_audit` are supported, and steps use `bin/capacity_audit`.
+
+---
+
+### Q58. Web UI decisions from phase 3b
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07 (QA verdict: acceptable).**
+
+- **Claim form URL.** The form is at `/new-claim`, because a claim may be numbered `new`.
+- **Claim number spaces.** The UI form **trims** spaces around the claim number before validating, and the API **rejects** them (Q57). Either way the stored value has no surrounding spaces.
+- **Money error codes.** The UI uses the API's codes: `out_of_range` (negative, or above 2^53−1), `not_an_integer` (non-zero cents) and `invalid_value` (anything else). Each gets its own human message.
+- **Unknown filter values.** An unknown filter value in the URL returns a 422 page with an alert and a way to clear the filters.
+
+---
+
+### Q59. CI and load decisions from phase 4
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07.**
+
+- **k6 script path.** The script lives at `load/k6/dispatch.js`; the criteria and glossary are updated to match.
+- **The `DISPATCH_TEST_LATENCY_MS` seam.** It injects API latency for the latency-breach scenarios, and any environment other than test refuses to boot with it set.
+- **Rule gate in CI.** If the PR's base branch has no rules file, the gate passes with a notice. On pull requests from forks, whose token is read-only, the report goes to the job summary instead of a PR comment. A breach always fails the job.
+- **Flake hunt.** The nightly job fails on any test classified as flaky or broken.
+- **Scaled-down local runs.** Nightly profiles assert their full-scale shape (for example, the stress breaking point at the first 10-VU step). Those assertions are only meaningful at full scale in CI, not at the 5-VU local cap.

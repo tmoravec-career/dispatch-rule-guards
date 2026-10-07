@@ -2,7 +2,7 @@
 
 *Decided by Tim, 2026-10-06; see `OPEN_QUESTIONS.md` Q40 and Q49. The specific numbers (VU counts, durations, think-time range) are analyst defaults within those decisions. Change them here, in one place.*
 
-These criteria cover the k6 script (`load/dispatch.js`) and how CI runs it. Its runtime behaviour is checked by `features/load_and_capacity.feature`:
+These criteria cover the k6 script (`load/k6/dispatch.js`) and how CI runs it. Its runtime behaviour is checked by `features/load_and_capacity.feature`:
 - `@audit` and `@concurrency` run in the acceptance job.
 - **`@k6_pr`** (the smoke profile) runs in the k6 job on every PR.
 - **`@k6_nightly`** (load, storm, soak, stress and the latency-breach check) runs in the nightly k6 job.

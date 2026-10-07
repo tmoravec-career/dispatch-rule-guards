@@ -1,0 +1,14 @@
+<%
+  # k6 profiles never run in the default profile (STEP_GLOSSARY.md section 9): they need k6
+  # and take from 30 s (smoke) to many minutes. They run only when a tag expression asks for
+  # them by name, e.g. `bundle exec cucumber --tags @k6_pr` (the PR k6 job) or
+  # `--tags @k6_nightly` (the nightly job). Without this, the profile's exclusion would be
+  # ANDed with the requested tag and select nothing.
+  k6_requested = ARGV.any? { |arg| arg.match?(/@k6_(pr|nightly)\b/) && !arg.match?(/\bnot\s+@k6_/) }
+  base = "--publish-quiet"
+  base += ' --tags "not @k6_pr and not @k6_nightly"' unless k6_requested
+  # JUnit XML, one file per feature, for CI artifacts and script/flake_report.rb.
+  junit_dir = ENV.fetch("CUCUMBER_JUNIT_DIR", "reports/junit")
+%>
+default: <%= base %>
+ci: <%= base %> --format progress --format junit --out <%= junit_dir %>

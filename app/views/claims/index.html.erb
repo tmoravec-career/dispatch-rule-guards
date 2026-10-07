@@ -1,0 +1,73 @@
+<% content_for :title, "Work queue" %>
+<section data-testid="work-queue" aria-labelledby="work-queue-heading">
+  <h1 id="work-queue-heading">Work queue</h1>
+
+  <%= form_with url: claims_path, method: :get, html: { role: "search", "aria-label": "Filter claims" } do %>
+    <div class="filters">
+      <div>
+        <%= label_tag "filter_queue", "Queue" %>
+        <%= select_tag "queue", options_for_select(@queues, @filters["queue"]), include_blank: "Any", id: "filter_queue" %>
+      </div>
+      <div>
+        <%= label_tag "filter_status", "Status" %>
+        <%= select_tag "status", options_for_select(Claim::STATUSES, @filters["status"]), include_blank: "Any",
+                                 id: "filter_status" %>
+      </div>
+      <div>
+        <%= label_tag "filter_adjuster", "Adjuster" %>
+        <%= select_tag "adjuster_id", options_for_select(@adjuster_ids, @filters["adjuster_id"]), include_blank: "Any",
+                                      id: "filter_adjuster" %>
+      </div>
+      <div>
+        <%= label_tag "filter_loss_state", "Loss state" %>
+        <%= select_tag "loss_state", options_for_select(Dispatch::US_STATES, @filters["loss_state"]), include_blank: "Any",
+                                     id: "filter_loss_state" %>
+      </div>
+      <div><button type="submit">Apply filters</button></div>
+    </div>
+  <% end %>
+  <%= form_with url: claims_path, method: :get, class: "actions" do %>
+    <button type="submit">Clear filters</button>
+  <% end %>
+
+  <% if @invalid_filters.any? %>
+    <p class="alert" role="alert">Unknown value for <%= @invalid_filters.to_sentence %>. Clear the filters to see every claim.</p>
+  <% end %>
+
+  <p><span data-testid="queue-count"><%= @claims.size %></span> <%= "claim".pluralize(@claims.size) %>, newest first</p>
+
+  <% if @claims.empty? %>
+    <p data-testid="queue-empty">No claims match these filters.</p>
+  <% else %>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Claim</th>
+          <th scope="col">Line of business</th>
+          <th scope="col">Loss state</th>
+          <th scope="col">Estimated loss</th>
+          <th scope="col">Queue</th>
+          <th scope="col">Status</th>
+          <th scope="col">Adjuster</th>
+          <th scope="col">Reason code</th>
+          <th scope="col">Filed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @claims.each do |claim| %>
+          <tr data-testid="claim-row-<%= claim.claim_number %>">
+            <th scope="row"><%= link_to claim.claim_number, claim_path(claim_number: claim.claim_number) %></th>
+            <td><%= claim.line_of_business %></td>
+            <td><%= claim.loss_state %></td>
+            <td><%= money(claim.estimated_loss) %></td>
+            <td data-testid="row-queue"><%= claim.queue %></td>
+            <td><span data-testid="row-status" class="badge <%= claim.status %>"><%= claim.status %></span></td>
+            <td data-testid="row-adjuster"><%= claim.adjuster_id %></td>
+            <td data-testid="row-reason-code"><%= claim.reason_code %></td>
+            <td><time datetime="<%= claim.created_at.utc.iso8601 %>"><%= claim.created_at.utc.strftime("%Y-%m-%d %H:%M UTC") %></time></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</section>

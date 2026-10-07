@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim_resource.schema.json",
+  "title": "Claim resource: GET /api/claims/:claim_number and each entry of GET /api/claims",
+  "description": "Pinned by OPEN_QUESTIONS.md Q38. Reuses the webhook contract's claim and dispatch definitions (including the status conditionals in $defs/dispatch), so the two contracts can't drift. Validate with format assertion on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["claim", "dispatch"],
+  "properties": {
+    "claim": { "$ref": "claim_dispatched.schema.json#/$defs/claim" },
+    "dispatch": { "$ref": "claim_dispatched.schema.json#/$defs/dispatch" }
+  }
+}

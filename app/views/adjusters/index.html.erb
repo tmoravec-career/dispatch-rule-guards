@@ -1,0 +1,35 @@
+<% content_for :title, "Adjusters" %>
+<section data-testid="adjusters-page" aria-labelledby="adjusters-heading">
+  <h1 id="adjusters-heading">Adjusters</h1>
+  <p>Load is open claims out of capacity. Inactive adjusters are never assigned work.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Name</th>
+        <th scope="col">Licensed states</th>
+        <th scope="col">Skills</th>
+        <th scope="col">Load</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @adjusters.each do |adjuster| %>
+        <tr data-testid="adjuster-row-<%= adjuster.id %>">
+          <th scope="row"><%= adjuster.id %></th>
+          <td><%= adjuster.name %></td>
+          <td data-testid="adjuster-states"><%= adjuster.licensed_states.sort.join(", ") %></td>
+          <td data-testid="adjuster-skills"><%= adjuster.skills.sort.join(", ") %></td>
+          <td>
+            <span data-testid="adjuster-load"><%= adjuster.open_claims %>/<%= adjuster.capacity %></span>
+            <% if adjuster.at_capacity? %>
+              <span data-testid="adjuster-at-capacity-<%= adjuster.id %>" class="badge full">At capacity</span>
+            <% end %>
+          </td>
+          <td data-testid="adjuster-status"><%= adjuster.active ? "active" : "inactive" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>

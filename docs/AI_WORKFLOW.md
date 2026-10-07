@@ -47,3 +47,91 @@ Below, each phase records what each agent produced and, most importantly, **what
 | 11 | orchestrator | Targeted verification of the final fixes, instead of a fourth full round. |
 
 **What the review loop bought:** three rounds found zero arithmetic errors but **two real concurrency defects** (a lock that doesn't lock, and a test that could deadlock), plus a contract hole. Both concurrency defects would have shown up later as flaky CI, if at all. Fixing them took a few lines of spec.
+
+---
+
+## Phase 2: Plain-Ruby engine and rule-change impact gate
+
+**Outcome:** `lib/dispatch/` uses only the standard library (no gems, no Rails), and `bin/rule_diff` runs without Bundler. 210 unit tests run in about 0.6 s, and 102 routing and gate scenarios pass (604 steps). The demo exits 1 with exactly the three breaches the brief describes.
+
+| Step | Agent | What happened |
+|---|---|---|
+| 1 | developer | Wrote tests first, then the engine, the CLI and the Cucumber steps. Proved the steps catch regressions by breaking the engine on purpose. **Stopped instead of tuning data** when the bare demo command couldn't reproduce the brief's numbers (that was the orchestrator's mistake in the done-criterion), and flagged that the 28-slot roster left 177 of 200 seeded claims unassigned, which made the gate's default run nearly blind. |
+| 2 | product-analyst | Q53: the exact demo pins its own claims and roster files. Q54: a realistic 25-adjuster shipped roster, plus acceptance checks that measure it, because the analyst said its sizing was only an estimate. |
+| 3 | qa-engineer | **FAIL.** D3: **the gate passed an off-by-one rule change with exit 0.** Probes were deduplicated by value, so a threshold $1 from another threshold was never probed. This came from a choice the developer had itself flagged as "left open by the spec". D1 and D2: a non-UTF-8 file and a `1e400` threshold crashed with exit 1, which CI reads as a policy breach. Mutation testing: 13 of 16 planted bugs were caught. QA committed **failing tests** for each defect. |
+| 4 | orchestrator | Decided 5 spec gaps under delegation (Q55): whole-dollar probes, finite numbers only, BOM accepted, at least one condition per rule, operator and field types must agree. |
+| 5 | developer | Fixed everything. **Held back one decision (G2)** because it conflicted with a QA test it isn't allowed to edit. QA changed its own test, then G2 landed. |
+| 6 | qa-engineer | **Narrow FAIL.** 14 of 18 new mutants were killed, and QA added tests for 2 of the survivors. Found that probes could merge a base rule and a proposed rule sharing an ID, that a roster setter skipped validation, and that `loss_state eq "tx"` passed validation but could never match (G6). |
+| 7 | code-reviewer | **APPROVE**, with findings. Confirmed the engine has no gem dependencies, replays are isolated, comparisons are strictly unrounded, the licensing guardrail has no bypass, and the engine API supports phase 3's retry after losing a race. Found **one more blind spot** (M1): delete one of two rules that share a threshold and no probe sees the claims that lost their route. Also found the roster's internal list could be mutated, past validation. |
+| 8 | qa-engineer | Wrote the M1 tests first; they **failed on purpose**. |
+| 9 | developer | **Stopped again.** The M1 rule as written counted an identical probe claim twice and would have changed 4 gate scenarios. It proposed defining the probe by the claim it builds. The orchestrator accepted that, and M1 landed with every feature unchanged. |
+
+**What the loop bought:** across two QA rounds and one review, the gate went from silently passing two kinds of dangerous rule change (an adjacent-threshold off-by-one, and a deleted rule hidden by a shared threshold) to catching both, each pinned by a regression test written before the fix. The role boundaries did real work here. The developer couldn't edit QA's tests or the spec, so every conflict came back as a decision instead of a quiet workaround.
+
+---
+
+## Phase 3: Rails app (API, webhooks, atomic capacity, web UI)
+
+**Outcome:** a Rails 7.2 layer over the engine, with no business logic in controllers or views. All **331 scenarios pass (3,083 steps)**, plus 80 app tests and 231 engine tests. Bugs found in this phase: 18 (BUG-010 to BUG-027), of which 17 are fixed with a regression test and 1 is deferred. See [qa/BUGS.md](qa/BUGS.md) and [qa/QA_RUNS.md](qa/QA_RUNS.md).
+
+Built in two developer passes: **3a** (API, webhooks, concurrency) and **3b** (server-rendered UI with Capybara page objects).
+
+| Step | Agent | What happened |
+|---|---|---|
+| 1 | developer (3a) | API, auth, rate limit, webhooks and an atomic conditional `UPDATE` with re-select through a test-only race seam. Proved the race tests are real: with the `open_claims < capacity` guard removed, both concurrency scenarios fail, and logs showed 18 lost races being retried. |
+| 2 | orchestrator | An independent re-run caught a **flaky failure (1 in 11)** that the developer's 5-for-5 had missed. |
+| 3 | qa-engineer | **FAIL.** Reproduced the flake (1 in 40), captured it, and classified it with measurements. It was **not** a capacity race and not a harness bug, but a SQLite `BusyException` returned in about 0.2 s under load instead of after the 5 s busy timeout, which in production would be a 500. Also found that **a slow webhook blocked an API response for 58.8 s** (the "2 s timeout" applied per read), a 500 on a huge `page`, and a duplicated token silently switching roles. Capacity held in every run. |
+| 4 | orchestrator | Q57: `IMMEDIATE` transactions with retry, one overall 2 s deadline per webhook, and delivery off the request thread. **The human asked for a formal bug log here**, so `docs/qa/` was created, backfilled, and filing became part of QA's role. |
+| 5 | developer | Fixed all 7 bugs, one commit per bug ID. The new webhook test against a real trickling TCP server took 10.2 s and failed on the old code. |
+| 6 | qa-engineer | **PASS.** Re-ran its original repros, confirmed `begin immediate transaction` on the live connection, and closed the bugs. |
+| 7 | developer (3b) | 44 UI scenarios, with label-first locators, page objects, no sleeps, and headless Chrome for 4 `@javascript` scenarios. Breaking the re-dispatch script failed all 4. |
+| 8 | qa-engineer | **PASS**, with 1 low-severity bug. Checked escaping (XSS), CSRF with protection switched on, accessibility attributes, and 20 money-input formats. |
+| 9 | code-reviewer | **REQUEST CHANGES.** The blocker: **`bin/rails` was committed with a Windows-only `ruby.exe` shebang, so the app could never start on Linux CI or in Docker**, and every Windows test run had passed it. Also found that production crashed without explanation when `SECRET_KEY_BASE` was unset, and that re-seeding reset adjuster counters, allowing over-assignment that the capacity audit couldn't see. It confirmed by reading the code that a retried transaction can't double-send events or webhooks. |
+| 10 | developer | Fixed all 9, and found and fixed a latent bug in the process (API errors falling back to plain text), filed as BUG-027. |
+| 11 | qa-engineer | **PASS.** Patched each fix back out in memory; all 8 reverted fixes made a test fail. |
+
+**Process notes, recorded honestly:**
+- The human killed one QA run for overloading the machine. QA had run 40 repetitions plus a CPU-stress job. Every later agent ran under explicit resource limits (one command at a time, capped repeats), and the flake was still diagnosed.
+- Twice QA noticed a problem but didn't file it (an unbounded webhook queue, and JSON error pages for browsers). The orchestrator filed both (BUG-017, BUG-019). A formal log makes those gaps visible.
+
+---
+
+## Phase 4: CI, Docker and load testing
+
+**Outcome:** a GitHub Actions pipeline with these jobs:
+- engine tests with no bundle;
+- contract tests that fail if they skip;
+- app tests;
+- Cucumber with JUnit output;
+- k6 smoke plus a capacity audit;
+- a Docker build with a compose smoke run;
+- the rule-change gate on PRs, posting a sticky comment;
+- a nightly job with load, storm, soak and stress profiles, plus a 3× flake hunt.
+
+Also a multi-stage, non-root Dockerfile and a compose file with `app`, `test` and `k6` services. Every action is pinned to a commit SHA. Bugs from this phase: 6 (BUG-028 to 033), 5 fixed and 1 deferred.
+
+**Constraint:** the machine has no Docker and the repo had no GitHub remote yet, so **the CI jobs and the Docker build were verified by reading, not by running**. That made the code review the main safeguard. Everything runnable was run locally under hard caps: 5 VUs, 30 s per k6 run, a budget of 8 runs, and no stray processes.
+
+| Step | Agent | What happened |
+|---|---|---|
+| 1 | devops-engineer | Built the k6 profiles, stress runner, flake report, Docker, compose and CI. Locally, smoke had p95 20 ms against a 300 ms budget, and stress reported its breaking point when 500 ms of latency was injected. Added a test-only latency switch (refused at boot outside test) and stopped at the run cap. |
+| 2 | orchestrator | The safety classifier was unavailable during one DevOps round. Audited its work with read-only tools: nothing pushed (no remote), no real credentials, and the new harness variable is test-only. |
+| 3 | code-reviewer | **REQUEST CHANGES**, reading only. **The Docker CI job would have failed on the first push**: a gitignored `reports/` folder gets created as root by the Docker daemon, so the next `mkdir` fails. Also, **nightly runs overwrote each other's reports**, so the summary would always show the deliberately broken stress run. And **the capacity audit was skipped exactly when a load run failed**, which is when over-assignment is most likely. Confirmed the gate permissions, sticky-comment mechanics, SHA pins and threshold semantics were correct. |
+| 4 | devops-engineer | Fixed all 5. **Caught its own broken fix:** the first BUG-030 hook ran after database cleanup and audited an empty database ("0 adjusters checked"). |
+| 5 | qa-engineer | **PASS.** Used its single allowed k6 run to prove the last gap: with 500 ms of injected latency, k6 failed, and the audit still ran and saw `25 adjusters checked, 0 over capacity`. |
+
+**What can only be proven on GitHub:** the first real CI run, the Docker build, the sticky PR comment on a real merge commit, and the nightly profiles at full scale (20 to 320 VUs).
+
+---
+
+## Publishing and the first real CI run
+
+**Outcome:** on its **first real run on GitHub, CI passed every job** for both PRs that carry the workflow (#37 and #38): engine tests, contract tests, app tests, Cucumber (331 scenarios), k6 smoke with the capacity audit, the Docker build with a compose smoke run, and the rule-change gate. The gate posted its sticky report on the PR, correctly PASS because those PRs don't change the rules. The nightly jobs were skipped, as designed on a PR. These were the jobs phase 4 could only verify by reading, so the reading-based review held up.
+
+| Step | Who | What happened |
+|---|---|---|
+| 1 | orchestrator | Moved all 101 commits to the account's GitHub no-reply identity before the first push (backed up to a bundle first), and remapped the 34 commit hashes cited in the bug log. |
+| 2 | orchestrator | Pushed the six phase branches, created 33 GitHub issues from the bug log (31 closed with links to their fix commits, 2 deferred), and opened the five stacked phase PRs. |
+| 3 | orchestrator | **No CI ran at all.** Ruled out the workflow file (present, and `actionlint` was clean), the repo setting (enabled), the account (Actions ran on another repo that morning) and the triggers (open, reopen, new commit). |
+| 4 | **human** | Approved merging spec-only phase 1 into `main`, then a diagnostic. |
+| 5 | orchestrator | A 10-line `hello` workflow pushed to `main` ran immediately. **A new repo's Actions don't activate until a workflow runs on the default branch**, and the API never reports that. After that, the PR's real CI fired on the next trigger, and the diagnostic workflow was deleted. |
