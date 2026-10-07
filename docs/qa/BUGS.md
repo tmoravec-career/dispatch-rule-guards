@@ -35,6 +35,12 @@ When the repo is on GitHub, each entry becomes an issue and the phase PR that fi
 | BUG-025 | 3 | Low | code-reviewer | The webhook deadline test's 2.5 s limit leaves 0.5 s of slack and will flake on a busy CI runner | Fixed | cbaf241 | `webhook_deadline_test.rb` (limit now 4.0 s) |
 | BUG-026 | 3 | Low | code-reviewer | `DispatchSettings` test-override setters (rules, tokens, webhook) have no test-only guard, so production code could swap live rules or tokens | Fixed | a5b9e2c | `dispatch_settings_test.rb` |
 | BUG-027 | 3 | Medium | developer | `ErrorsController` called `String#parameterize` on Rack's binary-encoded (ASCII-8BIT) status text, which raises `ArgumentError`, so any error reaching the exceptions app under `/api` fell back to Rails' plain-text response instead of the JSON errors body | Fixed | 3efd89c | `error_pages_test.rb` (fails with the old `parameterize` call restored) |
+| BUG-028 | 4 | High | code-reviewer | The CI `docker` job would fail on first push: `reports/` doesn't exist after checkout, so the rootful Docker daemon creates it as root through the compose bind mount, and the next `mkdir reports/k6` gets `Permission denied` | Open | — | — |
+| BUG-029 | 4 | Medium | code-reviewer | Nightly k6 scenarios overwrite each other's artifacts (keyed by profile only), so the nightly "Stress breaking point" summary always shows the latency-injected run and never the real breaking point | Open | — | — |
+| BUG-030 | 4 | Medium | code-reviewer | **The capacity audit is skipped exactly when a k6 run fails** (step order plus an After hook that skips failed scenarios), so over-assignment under a failing storm leaves no evidence | Open | — | — |
+| BUG-031 | 4 | Low | code-reviewer | `${SECRET_KEY_BASE:?}` in docker-compose aborts the documented local `test` and `k6` commands unless the variable is exported | Open | — | — |
+| BUG-032 | 4 | Low | code-reviewer | A misconfigured stress run (wrong API token, so 100% 401s) is reported as a real breaking point and exits 0 | Open | — | — |
+| BUG-033 | 4 | Low | code-reviewer | The load roster saturates about a minute into each profile and no claim ever closes, so most of a run measures the cheap at-capacity path and the storm burst barely contends for last slots | Deferred | — | — (needs a claim-close feature or a load-only roster; v2) |
 
 ## Spec gaps (decided, not defects)
 
