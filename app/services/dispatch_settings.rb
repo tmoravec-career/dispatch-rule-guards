@@ -25,12 +25,16 @@ module DispatchSettings
       boot.rate_window = positive_integer(env, "DISPATCH_RATE_WINDOW", 60)
       boot.webhook_url = env["DISPATCH_WEBHOOK_URL"].presence
       boot.webhook_secret = env["DISPATCH_WEBHOOK_SECRET"].presence
-      if boot.webhook_url && !boot.webhook_secret
-        raise InvalidConfig, "DISPATCH_WEBHOOK_URL is set but DISPATCH_WEBHOOK_SECRET is not: every delivery must be signed (Q45)"
+      if boot.webhook_url
+        check_webhook_url!(boot.webhook_url)
+        unless boot.webhook_secret
+          raise InvalidConfig, "DISPATCH_WEBHOOK_URL is set but DISPATCH_WEBHOOK_SECRET is not: every delivery must be signed (Q45)"
+        end
       end
       start_webhook_queue
       reset!
-    rescue Dispatch::ConfigError => e
+    # Every problem, including an unreadable rules or roster file, gets the same message.
+    rescue Dispatch::ConfigError, InvalidConfig, SystemCallError => e
       raise InvalidConfig, "refusing to boot with invalid dispatch config (Q9):\n#{e.message}"
     end
 
@@ -86,6 +90,7 @@ module DispatchSettings
     end
 
     def webhook_url=(url)
+      check_webhook_url!(url) if url
       store.webhook_url = url
     end
 
@@ -111,6 +116,16 @@ module DispatchSettings
 
     def store
       Rails.configuration.x.dispatch
+    end
+
+    # Q57: an absolute http or https URL with a host.
+    def check_webhook_url!(url)
+      uri = URI.parse(url)
+      return if uri.is_a?(URI::HTTP) && uri.host.present?
+
+      raise InvalidConfig, "DISPATCH_WEBHOOK_URL must be an absolute http or https URL"
+    rescue URI::InvalidURIError
+      raise InvalidConfig, "DISPATCH_WEBHOOK_URL must be an absolute http or https URL"
     end
 
     # One queue per process. Each job delivers with the URL and secret current when the
