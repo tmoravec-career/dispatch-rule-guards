@@ -290,7 +290,7 @@ Feature: Work queue web UI
 
   # Re-dispatch asks for confirmation in a JS confirm dialog, and the result is rendered
   # asynchronously, so these scenarios run in a JS-capable driver (@javascript) and every
-  # assertion after the click relies on Capybara's waiting matchers, never on sleep (Q51).
+  # assertion after the click relies on Capybara's waiting matchers, never on fixed waits (Q51).
 
   @javascript
   Scenario: Re-dispatching a stranded claim after capacity frees up assigns it

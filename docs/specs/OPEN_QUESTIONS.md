@@ -689,3 +689,19 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
 - **Breach display.** If a rounded `actual` equals its threshold, show two decimals (e.g. `10.04`), so a breach never displays as "10.0 > 10".
 - **Markdown safety.** Table cells escape `|` and collapse newlines.
 - **M1 follow-up: probe identity is the probe claim.** After applying the Q56 retention rule, probes are deduplicated by **(field, value, probe claim)**. When two owners build an identical claim, it's one probe, and the proposed-sourced one is kept. Without this, the demo's `gte 50000` → `gt 50000` builds the same claim from the base and proposed rules and counts one boundary change twice. Owners that build *different* claims at the same value still each get a probe (L1, M1).
+
+---
+
+### Q57. Decisions from the phase 3a QA round
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07.**
+
+- **SQLite locking under load (D4).** Use `default_transaction_mode: immediate` in every environment, so `BEGIN` takes the write lock up front and the busy timeout always applies. Retry a write transaction that hits `BusyException` up to 3 times. Under concurrent load, a dispatch waits; it never returns 500 because of lock contention.
+- **Webhook deadline (D1, refines Q24).** The 2 s is one **overall wall-clock deadline** per delivery attempt, covering connect, write and read together. A trickling or blackholed endpoint is cut off at 2 s and recorded as `failed`. Delivery runs **off the request thread** in development and production (an in-process queue), and inline in test for determinism, so the API response never waits on a webhook. `pending` is a valid transient state. A transactional outbox with retries is future work, noted in the README.
+- **Page cap (D2).** `page` × `per_page` above 1,000,000 is 422 `out_of_range`.
+- **API tokens (D3).** A duplicate token, or a token containing whitespace, refuses to boot.
+- **Claim numbers (D5).** A claim number with leading or trailing whitespace, or one equal to a reserved route segment (`stats`), is `invalid_value`.
+- **Invalid UTF-8 bodies (D6).** These return JSON 400 `malformed_json` in every environment.
+- **Boot checks.** The webhook URL must be an absolute `http`/`https` URL. A missing rules or roster file gives the standard "refusing to boot" message.
+- **Codes recorded (QA verdict: acceptable).** 415 is `unsupported_media_type`; 500 is `internal_error`. A whole-number float such as `12000.0` is an integer. Money above 2^53−1 is `out_of_range`. `not_configured` is the delivery state when no URL is set.
+- **Capacity audit command.** Both `bin/capacity_audit` and `bin/rails dispatch:capacity_audit` are supported, and steps use `bin/capacity_audit`.
