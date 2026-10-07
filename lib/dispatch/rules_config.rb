@@ -62,7 +62,10 @@ module Dispatch
       validate_skills(rule, path, collector) if rule.key?("required_skills")
       return unless rule.key?("conditions")
 
-      if rule["conditions"].is_a?(Array)
+      if rule["conditions"] == []
+        # A rule must say what it matches; the catch-all is general_intake (Q55 G2).
+        collector.add("invalid_value", "#{path}.conditions", "a rule needs at least one condition")
+      elsif rule["conditions"].is_a?(Array)
         rule["conditions"].each_with_index do |condition, j|
           Condition.validate(condition, "#{path}.conditions[#{j}]", collector)
         end

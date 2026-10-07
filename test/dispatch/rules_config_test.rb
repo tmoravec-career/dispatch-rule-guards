@@ -29,6 +29,18 @@ class RulesConfigTest < Minitest::Test
     assert_equal config.rules.map(&:id), Dispatch::RulesConfig.from_h(reversed).rules.map(&:id)
   end
 
+  # Q55 G2: a rule must have at least one condition, reported with any other errors.
+  def test_rule_with_no_conditions_is_rejected
+    assert_equal [["invalid_value", "rules[0].conditions"]], errors_for(single_rule([]))
+    hash = { "rules" => [
+      { "id" => "a", "priority" => 1, "queue" => "q", "required_skills" => [], "conditions" => [] },
+      { "id" => "b", "priority" => 1, "queue" => "q", "required_skills" => [],
+        "conditions" => [{ "field" => "vehicle_value", "op" => "gtee", "value" => 1 }] }
+    ] }
+    assert_equal [["duplicate_priority", "rules[1].priority"], ["invalid_value", "rules[0].conditions"],
+                  ["unknown_operator", "rules[1].conditions[0].op"]], errors_for(hash).sort
+  end
+
   def test_empty_rule_set_is_valid
     assert_equal 0, Dispatch::RulesConfig.from_h({ "rules" => [] }).rules.size
   end
@@ -118,7 +130,7 @@ class RulesConfigTest < Minitest::Test
   end
 
   def test_unknown_rule_field
-    hash = { "rules" => [{ "id" => "luxury_auto", "priority" => 20, "conditions" => [], "queue" => "luxury_auto",
+    hash = { "rules" => [{ "id" => "luxury_auto", "priority" => 20, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "queue" => "luxury_auto",
                            "required_skils" => ["luxury_vehicle"] }] }
     errors = errors_for(hash)
     assert_includes errors, ["unknown_field", "rules[0].required_skils"]
@@ -126,7 +138,7 @@ class RulesConfigTest < Minitest::Test
   end
 
   def test_missing_rule_field
-    hash = { "rules" => [{ "id" => "luxury_auto", "priority" => 20, "conditions" => [], "required_skills" => [] }] }
+    hash = { "rules" => [{ "id" => "luxury_auto", "priority" => 20, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "required_skills" => [] }] }
     assert_equal [["missing_field", "rules[0].queue"]], errors_for(hash)
   end
 
@@ -136,16 +148,16 @@ class RulesConfigTest < Minitest::Test
 
   def test_duplicate_priority_points_at_later_rule
     hash = { "rules" => [
-      { "id" => "luxury_auto", "priority" => 20, "conditions" => [], "queue" => "luxury_auto", "required_skills" => [] },
-      { "id" => "auto_standard", "priority" => 20, "conditions" => [], "queue" => "auto_standard", "required_skills" => [] }
+      { "id" => "luxury_auto", "priority" => 20, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "queue" => "luxury_auto", "required_skills" => [] },
+      { "id" => "auto_standard", "priority" => 20, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "queue" => "auto_standard", "required_skills" => [] }
     ] }
     assert_equal [["duplicate_priority", "rules[1].priority"]], errors_for(hash)
   end
 
   def test_duplicate_rule_id_points_at_later_rule
     hash = { "rules" => [
-      { "id" => "luxury_auto", "priority" => 20, "conditions" => [], "queue" => "luxury_auto", "required_skills" => [] },
-      { "id" => "luxury_auto", "priority" => 30, "conditions" => [], "queue" => "luxury_auto", "required_skills" => [] }
+      { "id" => "luxury_auto", "priority" => 20, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "queue" => "luxury_auto", "required_skills" => [] },
+      { "id" => "luxury_auto", "priority" => 30, "conditions" => [{ "field" => "cat_event", "op" => "eq", "value" => true }], "queue" => "luxury_auto", "required_skills" => [] }
     ] }
     assert_equal [["duplicate_rule_id", "rules[1].id"]], errors_for(hash)
   end

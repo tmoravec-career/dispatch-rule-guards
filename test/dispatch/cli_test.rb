@@ -103,6 +103,16 @@ class CLITest < Minitest::Test
     refute File.exist?(path("out/report.md"))
   end
 
+  # Q55 G2: a rule with no conditions is refused before anything is replayed.
+  def test_rule_without_conditions_exits_2
+    write("catch_all.json", '{"rules": [{"id": "x", "priority": 1, "queue": "q", "required_skills": [], "conditions": []}]}')
+    status, _, err = with_reports(replay_args("catch_all.json"))
+    assert_equal 2, status
+    assert_includes err, "invalid_value at rules[0].conditions"
+    assert_includes err, "catch_all.json"
+    refute File.exist?(path("out/report.json"))
+  end
+
   def test_both_invalid_files_are_reported
     write("bad_base.json", '{"rules": [], "enforce_licensing": false}')
     write("bad_proposed.json", '{"rules": [{"id": "x"}]}')
