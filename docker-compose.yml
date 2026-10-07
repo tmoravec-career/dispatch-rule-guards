@@ -1,0 +1,62 @@
+# Dispatch Rules Guard with Docker (the recommended path on Windows).
+#
+#   App:        SECRET_KEY_BASE=<bin/rails secret> docker compose up --build app
+#               -> http://localhost:3000 ; API token "local-ops-token" unless DISPATCH_API_TOKENS is set
+#   Tests:      docker compose run --rm test                     (Cucumber, default profile)
+#               docker compose run --rm test bundle exec ruby -Itest -e 'Dir["test/app/**/*_test.rb"].each { |f| require "./#{f}" }'
+#   Load:       docker compose --profile load run --rm k6        (K6_PROFILE=smoke by default)
+#               K6_PROFILE=load docker compose --profile load run --rm k6
+#   Audit:      docker compose exec app bin/capacity_audit       (after every k6 run; exit 1 = over-assigned)
+#
+# SECRET_KEY_BASE has no default on purpose: the app refuses to boot without it
+# (docs/CONFIGURATION.md). The tokens below are for local use only.
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    image: dispatch-rules-guard:local
+    environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE (generate one with bin/rails secret)}
+      DISPATCH_API_TOKENS: ${DISPATCH_API_TOKENS:-local-ops-token:ops,local-adjuster-token:adjuster}
+      DISPATCH_WEBHOOK_URL: ${DISPATCH_WEBHOOK_URL:-}
+      DISPATCH_WEBHOOK_SECRET: ${DISPATCH_WEBHOOK_SECRET:-}
+      # Q48 / LOAD_TEST_CRITERIA.md: the load environment's limit is high enough that k6's
+      # token is never throttled (production's default is 600 per minute).
+      DISPATCH_RATE_LIMIT: ${DISPATCH_RATE_LIMIT:-1000000}
+      RAILS_LOG_LEVEL: ${RAILS_LOG_LEVEL:-info}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - app-storage:/app/storage
+
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    image: dispatch-rules-guard:test
+    volumes:
+      - ./reports:/app/reports
+
+  k6:
+    profiles: ["load"]
+    image: grafana/k6:2.2.0
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      K6_PROFILE: ${K6_PROFILE:-smoke}
+      K6_BASE_URL: http://app:3000
+      # Must be an ops token listed in the app's DISPATCH_API_TOKENS.
+      K6_API_TOKEN: ${K6_API_TOKEN:-local-ops-token}
+      K6_SOAK_DURATION: ${K6_SOAK_DURATION:-2m}
+    volumes:
+      - ./load/k6:/scripts:ro
+      # k6 runs as uid 12345: on a Linux host, make reports/k6 writable for it first.
+      - ./reports/k6:/reports
+    command: ["run", "--summary-export", "/reports/k6-summary-${K6_PROFILE:-smoke}.json", "/scripts/dispatch.js"]
+
+volumes:
+  app-storage:

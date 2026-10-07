@@ -9,7 +9,9 @@ require "selenium-webdriver"
 #   in a Puma thread on its own database connection.
 #
 # Selenium Manager (bundled with selenium-webdriver) finds or fetches the chromedriver that
-# matches the installed Chrome, so nothing else needs installing.
+# matches the installed Chrome, so nothing else needs installing. Where Chrome isn't in a
+# standard place (Debian's Chromium in the Docker test image, setup-chrome in CI), set
+# CHROME_BIN and CHROMEDRIVER_PATH to use those binaries instead.
 Capybara.register_driver(:headless_chrome) do |app|
   options = Selenium::WebDriver::Chrome::Options.new
   options.add_argument("--headless=new")
@@ -23,7 +25,12 @@ Capybara.register_driver(:headless_chrome) do |app|
   # root is only checked elsewhere.
   running_as_root = !Gem.win_platform? && Process.uid.zero?
   options.add_argument("--no-sandbox") if ENV["CI"] || running_as_root
-  Capybara::Selenium::Driver.new(app, browser: :chrome, options: options)
+  options.binary = ENV["CHROME_BIN"] unless ENV["CHROME_BIN"].to_s.empty?
+  driver_options = { browser: :chrome, options: options }
+  unless ENV["CHROMEDRIVER_PATH"].to_s.empty?
+    driver_options[:service] = Selenium::WebDriver::Service.chrome(path: ENV["CHROMEDRIVER_PATH"])
+  end
+  Capybara::Selenium::Driver.new(app, **driver_options)
 end
 
 Capybara.javascript_driver = :headless_chrome
