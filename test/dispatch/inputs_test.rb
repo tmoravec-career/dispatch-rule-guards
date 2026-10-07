@@ -71,6 +71,18 @@ class InputsTest < Minitest::Test
     refute roster.find("ADJ-001").active
   end
 
+  # QA L3: setting the counter directly can't exceed capacity either.
+  def test_set_open_claims_validates_and_changes_nothing_on_error
+    roster = DispatchFixtures.roster
+    [[99, "invalid_value"], [-1, "invalid_value"], [1.5, "invalid_value"]].each do |count, code|
+      error = assert_raises(Dispatch::ConfigError, count.inspect) { roster.set_open_claims("ADJ-004", count) }
+      assert_equal [[code, "adjusters[3].open_claims"]], error.errors.map { |e| [e.code, e.path] }
+    end
+    assert_equal 0, roster.find("ADJ-004").open_claims
+    roster.set_open_claims("ADJ-004", 2)
+    assert_equal 2, roster.find("ADJ-004").open_claims
+  end
+
   def test_roster_unknown_id
     assert_raises(KeyError) { DispatchFixtures.roster.find("ADJ-999") }
   end

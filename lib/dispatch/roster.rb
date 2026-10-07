@@ -69,11 +69,10 @@ module Dispatch
       Roster.new(adjusters.map { |a| Adjuster.from_h(a.to_h) })
     end
 
-    # Sets the open-claims counter directly (seed data, test setup).
+    # Sets the open-claims counter directly (seed data, test setup). Validated like any
+    # other change: a count below 0 or above capacity raises and changes nothing.
     def set_open_claims(id, count)
-      raise ArgumentError, "open claims must be an integer >= 0" unless Dispatch.non_negative_integer?(count)
-
-      find(id).assign_open_claims!(count)
+      update(id, open_claims: count)
     end
 
     # Replaces an adjuster's attributes, e.g. update("ADJ-004", active: false). The result

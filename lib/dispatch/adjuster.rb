@@ -77,9 +77,5 @@ module Dispatch
     def increment_open_claims!
       @open_claims += 1
     end
-
-    def assign_open_claims!(count)
-      @open_claims = count
-    end
   end
 end
