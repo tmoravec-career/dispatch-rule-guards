@@ -29,6 +29,23 @@ class MarkdownReportTest < Minitest::Test
     refute_includes md, "FAIL"
   end
 
+  # Q56: cells escape "|" and collapse newlines, so a value can't break the table.
+  def test_table_cells_are_escaped
+    rules = base_rules_hash
+    rules["rules"][1]["queue"] = "luxury|auto\nnext"
+    md = Dispatch::Gate::MarkdownReport.render(
+      Dispatch::Gate::Impact.new(base: base_config, proposed: Dispatch::RulesConfig.from_h(rules),
+                                 claims: REPLAY_CLAIMS, roster: roster, policy: Dispatch::Gate::Policy.new).report
+    )
+    assert_includes md, "`luxury\\|auto next`"
+    refute_includes md, "luxury|auto"
+    refute_includes md, "auto\nnext"
+    # Every row of the rerouted table still has exactly 3 cells (4 unescaped pipes).
+    rerouted = md[/^## Rerouted claims\n\n(.*?)\n\n/m, 1].lines
+    assert(rerouted.all? { |l| l.scan(/(?<!\\)\|/).size == 4 }, rerouted.inspect)
+    assert_equal "a\\|b c", Dispatch::Gate::MarkdownReport.cell("a|b\r\n  c")
+  end
+
   def test_json_report_is_stable_text
     a = Dispatch::Gate::Impact.to_json(report(demo_proposed_hash))
     b = Dispatch::Gate::Impact.to_json(report(demo_proposed_hash))

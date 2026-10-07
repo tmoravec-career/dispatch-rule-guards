@@ -22,7 +22,7 @@ module Dispatch
           list << breach("max_new_unassigned", max_new_unassigned, new_unassigned)
         end
         if reroute_pct > max_reroute_pct
-          list << breach("max_reroute_pct", self.class.number(max_reroute_pct), self.class.display_pct(reroute_pct))
+          list << breach("max_reroute_pct", self.class.number(max_reroute_pct), breach_pct(reroute_pct))
         end
         if probe_changes > max_probe_changes
           list << breach("max_probe_changes", max_probe_changes, probe_changes)
@@ -41,6 +41,13 @@ module Dispatch
       end
 
       private
+
+      # A breach must never read "10.0 > 10": if the 1-decimal value equals the threshold,
+      # show 2 decimals instead, e.g. 10.04 (Q56).
+      def breach_pct(rational)
+        shown = rational.round(1)
+        shown == max_reroute_pct ? rational.round(2).to_f : shown.to_f
+      end
 
       def breach(policy, threshold, actual)
         { "policy" => policy, "threshold" => threshold, "actual" => actual }

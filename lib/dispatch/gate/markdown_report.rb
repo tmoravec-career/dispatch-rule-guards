@@ -61,8 +61,13 @@ module Dispatch
       def table(headers, rows)
         return ["None."] if rows.empty?
 
-        ["| #{headers.join(' | ')} |", "|#{headers.map { '---' }.join('|')}|",
-         *rows.map { |row| "| #{row.map { |cell| cell.nil? ? '' : cell.to_s }.join(' | ')} |" }]
+        ["| #{headers.map { |h| cell(h) }.join(' | ')} |", "|#{headers.map { '---' }.join('|')}|",
+         *rows.map { |row| "| #{row.map { |c| cell(c) }.join(' | ')} |" }]
+      end
+
+      # Table-safe text: a "|" would end the cell and a newline would end the row (Q56).
+      def cell(value)
+        value.to_s.gsub(/\s*\R\s*/, " ").gsub("|") { "\\|" }
       end
 
       def code(text)

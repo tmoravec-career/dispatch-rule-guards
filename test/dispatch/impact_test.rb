@@ -111,7 +111,8 @@ class ImpactTest < Minitest::Test
 
   def test_reroute_policy_compares_unrounded_percentage
     proposed = with_condition(base_rules_hash, "luxury_auto", "vehicle_value", "gte", 110_000)
-    { "33.4" => [], "33.34" => [], "33.3" => [["max_reroute_pct", 33.3, 33.3]] }.each do |threshold, expected|
+    # 33.33...% breaches 33.3; shown with 2 decimals so it doesn't read "33.3 > 33.3" (Q56).
+    { "33.4" => [], "33.34" => [], "33.3" => [["max_reroute_pct", 33.3, 33.33]] }.each do |threshold, expected|
       report = run_gate(proposed, claims: LUXURY_OVERFLOW, policy: { max_reroute_pct: threshold, max_probe_changes: 3 })
       assert_equal expected, breaches(report), threshold
     end
@@ -163,6 +164,17 @@ class ImpactTest < Minitest::Test
 
   def test_zero_claims_is_zero_percent
     assert_equal 0.0, run_gate(demo_proposed_hash, claims: [])["summary"]["reroute_pct"]
+  end
+
+  # Q56: a rounded breach actual that equals the threshold is shown with 2 decimals.
+  def test_breach_actual_never_displays_equal_to_its_threshold
+    policy = Dispatch::Gate::Policy.new(max_reroute_pct: "10")
+    actual = ->(pct) { policy.breaches(new_unassigned: 0, reroute_pct: pct, probe_changes: 0).first["actual"] }
+    assert_equal 10.04, actual.call(Rational(1004, 100))
+    assert_equal 10.01, actual.call(Rational(10_009, 1000))
+    assert_equal 10.4, actual.call(Rational(104, 10))
+    assert_equal 50.0, actual.call(Rational(50))
+    assert_equal 10.0, Dispatch::Gate::Policy.display_pct(Rational(1004, 100)), "the summary keeps 1 decimal"
   end
 
   def test_policy_rejects_negative_or_non_numeric_thresholds
