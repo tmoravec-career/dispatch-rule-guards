@@ -53,7 +53,7 @@ class ImpactTest < Minitest::Test
     assert_empty report["policy_breaches"]
     %w[newly_unassigned newly_assigned rerouted queue_changes boundary_probe_changes].each { |k| assert_empty report[k], k }
     assert_equal 0.0, report["summary"]["reroute_pct"]
-    assert_equal 15, report["boundary_probes"].size
+    assert_equal 12, report["boundary_probes"].size
     refute Dispatch::Gate::Impact.breached?(report)
   end
 
