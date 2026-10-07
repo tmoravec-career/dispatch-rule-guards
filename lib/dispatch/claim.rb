@@ -83,11 +83,6 @@ module Dispatch
       end
     end
 
-    # Copy with some fields replaced (used to build boundary probes).
-    def with(**changes)
-      self.class.new(**to_h.transform_keys(&:to_sym).merge(changes))
-    end
-
     def to_h
       FIELDS.to_h { |f| [f, self[f]] }
     end

@@ -114,10 +114,7 @@ module Dispatch
       rules.find { |rule| rule.matches?(claim) }
     end
 
-    def find(rule_id)
-      rules.find { |r| r.id == rule_id }
-    end
-
+    # Configured queues, for phase 3's queue filter and stats (Q35, Q43).
     def queues
       rules.map(&:queue).uniq
     end

@@ -5,7 +5,6 @@ module Dispatch
     ASSIGNED = "assigned".freeze
     NO_QUALIFIED_ADJUSTER = "no_qualified_adjuster".freeze
     QUALIFIED_ADJUSTERS_AT_CAPACITY = "qualified_adjusters_at_capacity".freeze
-    REASON_CODES = [ASSIGNED, NO_QUALIFIED_ADJUSTER, QUALIFIED_ADJUSTERS_AT_CAPACITY].freeze
 
     attr_reader :claim_number, :queue, :matched_rule, :adjuster_id, :reason_code, :reason
 
