@@ -50,9 +50,10 @@ module Dispatch
       end
     end
 
-    # Exact rational, so 1/3 ties with 2/6 (Q16). Only meaningful when capacity > 0.
+    # Exact rational, so 1/3 ties with 2/6 (Q16). Capacity 0 counts as full (Q17), so it
+    # is Rational(1) rather than a division by zero.
     def utilization
-      Rational(open_claims, capacity)
+      capacity.zero? ? Rational(1) : Rational(open_claims, capacity)
     end
 
     # Capacity 0 is permanently full (Q17).

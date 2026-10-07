@@ -40,17 +40,20 @@ module Dispatch
       roster.adjusters.select { |a| qualified?(a, claim, routing.required_skills) }
     end
 
-    # Qualified adjusters with room, best first. Excluded IDs are treated as full.
-    def candidates(claim, roster, exclude: [], routing: route(claim))
-      qualified(claim, roster, routing)
-        .reject { |a| a.full? || exclude.include?(a.id) }
+    # Qualified adjusters with room, best first. Excluded IDs are treated as full. `exclude`
+    # may be an Array, a Set, a single ID or nil; IDs match whole, never as substrings.
+    # `pool` lets a caller that already has the qualified list skip recomputing it.
+    def candidates(claim, roster, exclude: [], routing: route(claim), pool: nil)
+      excluded = Array(exclude)
+      (pool || qualified(claim, roster, routing))
+        .reject { |a| a.full? || excluded.include?(a.id) }
         .sort_by { |a| [a.utilization, a.id] }
     end
 
     def decide(claim, roster, exclude: [])
       routing = route(claim)
       qualified = qualified(claim, roster, routing)
-      best = candidates(claim, roster, exclude: exclude, routing: routing).first
+      best = candidates(claim, roster, exclude: exclude, routing: routing, pool: qualified).first
       reason_code =
         if best then Result::ASSIGNED
         elsif qualified.empty? then Result::NO_QUALIFIED_ADJUSTER

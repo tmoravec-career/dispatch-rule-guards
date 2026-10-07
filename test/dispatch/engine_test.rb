@@ -221,6 +221,24 @@ class EngineTest < Minitest::Test
     assert_equal "qualified_adjusters_at_capacity", exhausted.reason_code
   end
 
+  # Review L1: exclude takes an Array, a Set, a single ID or nil, and matches whole IDs.
+  def test_exclusion_accepts_set_single_id_and_nil
+    require "set"
+    c = claim("C", "auto", 12_000, 30_000, false, "TX")
+    assert_equal "ADJ-002", @engine.decide(c, @roster, exclude: Set["ADJ-001"]).adjuster_id
+    assert_equal "ADJ-002", @engine.decide(c, @roster, exclude: "ADJ-001").adjuster_id
+    assert_equal "ADJ-001", @engine.decide(c, @roster, exclude: "ADJ-00").adjuster_id, "no substring match"
+    assert_equal "ADJ-001", @engine.decide(c, @roster, exclude: nil).adjuster_id
+  end
+
+  # Review L4: capacity 0 is full, never a ZeroDivisionError.
+  def test_capacity_zero_utilization_is_full
+    zero = Dispatch::Adjuster.from_h("id" => "ADJ-900", "name" => "Zero", "active" => true, "licensed_states" => ["TX"],
+                                     "skills" => [], "capacity" => 0, "open_claims" => 0)
+    assert_equal Rational(1), zero.utilization
+    assert zero.full?
+  end
+
   def test_candidates_are_ordered_for_reselection
     c = claim("C", "auto", 12_000, 30_000, false, "TX")
     @roster.set_open_claims("ADJ-001", 1)
