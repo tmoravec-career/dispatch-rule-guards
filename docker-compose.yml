@@ -8,8 +8,10 @@
 #               K6_PROFILE=load docker compose --profile load run --rm k6
 #   Audit:      docker compose exec app bin/capacity_audit       (after every k6 run; exit 1 = over-assigned)
 #
-# SECRET_KEY_BASE has no default on purpose: the app refuses to boot without it
-# (docs/CONFIGURATION.md). The tokens below are for local use only.
+# SECRET_KEY_BASE is needed by `app` (and so by `k6`, which waits for it) and by nothing else.
+# It has no default on purpose: unset, the app container exits at boot with
+# "refusing to boot in production: SECRET_KEY_BASE is not set" (docs/CONFIGURATION.md).
+# `docker compose run --rm test` works without it. The tokens below are for local use only.
 
 services:
   app:
@@ -18,7 +20,9 @@ services:
       target: app
     image: dispatch-rules-guard:local
     environment:
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE (generate one with bin/rails secret)}
+      # Empty when unset, so `test` and other commands don't need it; the app itself then
+      # refuses to boot with a message naming the variable (BUG-021).
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       DISPATCH_API_TOKENS: ${DISPATCH_API_TOKENS:-local-ops-token:ops,local-adjuster-token:adjuster}
       DISPATCH_WEBHOOK_URL: ${DISPATCH_WEBHOOK_URL:-}
       DISPATCH_WEBHOOK_SECRET: ${DISPATCH_WEBHOOK_SECRET:-}
