@@ -8,6 +8,9 @@ module Dispatch
     # Whole dollars above this can't round-trip through JSON numbers or the database.
     MAX_MONEY = 2**53 - 1
 
+    # GET /api/claims/stats is a route, so no claim may be numbered "stats" (Q43, Q57).
+    RESERVED_CLAIM_NUMBERS = %w[stats].freeze
+
     module_function
 
     # Returns [attributes, errors]. Attributes are nil when there are errors.
@@ -28,11 +31,13 @@ module Dispatch
       [normalize(body), errors]
     end
 
-    # A claim number addresses the claim in URLs (Q22), so it can't contain "/" or control characters.
+    # A claim number addresses the claim in URLs (Q22), so it can't contain "/" or control
+    # characters, start or end with whitespace, or be a reserved route segment (Q57).
     def claim_number_code(value)
       return "missing" if value.nil?
       return "invalid_value" unless Dispatch.non_empty_string?(value)
       return "invalid_value" if value.length > Claim::MAX_CLAIM_NUMBER_LENGTH || value.match?(%r{[/[:cntrl:]]})
+      return "invalid_value" if value.match?(/\A[[:space:]]|[[:space:]]\z/) || RESERVED_CLAIM_NUMBERS.include?(value)
 
       nil
     end

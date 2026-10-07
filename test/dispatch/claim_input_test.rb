@@ -71,10 +71,12 @@ class ClaimInputTest < Minitest::Test
   end
 
   def test_claim_number_shape
-    ["", "   ", "A" * 33, 42, "CLM/1"].each do |bad|
+    ["", "   ", "A" * 33, 42, "CLM/1", " CLM-1", "CLM-1 ", "\tCLM-1", "CLM-1 ", "stats"].each do |bad|
       assert_equal [["claim_number", "invalid_value"]], errors_for({ "claim_number" => bad }), bad.inspect
     end
-    assert_empty errors_for({ "claim_number" => "A" * 32 })
+    ["A" * 32, "CLM 1", "Stats", "stats-1"].each do |good|
+      assert_empty errors_for({ "claim_number" => good }), good.inspect
+    end
   end
 
   def test_unknown_fields_are_rejected
