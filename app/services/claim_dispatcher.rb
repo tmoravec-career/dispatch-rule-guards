@@ -40,7 +40,8 @@ class ClaimDispatcher
     end
   end
 
-  def initialize(rules: DispatchSettings.rules, notifier: WebhookNotifier.new, clock: Clock)
+  # `notifier` forces inline delivery through that notifier (tests, tools).
+  def initialize(rules: DispatchSettings.rules, notifier: nil, clock: Clock)
     @engine = Dispatch::Engine.new(rules)
     @notifier = notifier
     @clock = clock
@@ -140,8 +141,18 @@ class ClaimDispatcher
     )
   end
 
-  # After commit. Never raises (WebhookNotifier records and logs failures).
+  # After commit, and never raises. Outside test the delivery is queued, so the caller
+  # doesn't wait on the webhook and the event stays "pending" until the worker gets to
+  # it (Q57). With no URL there is no network call, so that is recorded inline.
   def deliver(event)
-    @notifier.deliver(event)
+    url = DispatchSettings.webhook_url
+    secret = DispatchSettings.webhook_secret
+    if @notifier || DispatchSettings.webhook_delivery == :inline || url.blank?
+      (@notifier || WebhookNotifier.new(url: url, secret: secret)).deliver(event)
+    else
+      DispatchSettings.webhook_queue.enqueue(event_id: event.id, url: url, secret: secret)
+    end
+  rescue StandardError => e
+    Rails.logger.error("could not deliver webhook #{event.event_id}: #{e.class}: #{e.message}")
   end
 end

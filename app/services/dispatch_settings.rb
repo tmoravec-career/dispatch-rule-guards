@@ -28,6 +28,7 @@ module DispatchSettings
       if boot.webhook_url && !boot.webhook_secret
         raise InvalidConfig, "DISPATCH_WEBHOOK_URL is set but DISPATCH_WEBHOOK_SECRET is not: every delivery must be signed (Q45)"
       end
+      start_webhook_queue
       reset!
     rescue Dispatch::ConfigError => e
       raise InvalidConfig, "refusing to boot with invalid dispatch config (Q9):\n#{e.message}"
@@ -95,10 +96,35 @@ module DispatchSettings
       store.webhook_secret = secret
     end
 
+    # Off the request thread everywhere except test, where delivery is inline so scenarios
+    # are deterministic (Q57).
+    def webhook_delivery
+      Rails.env.test? ? :inline : :async
+    end
+
+    def webhook_queue
+      store.webhook_queue
+    end
+
     private
 
     def store
       Rails.configuration.x.dispatch
+    end
+
+    # One queue per process. Each job delivers with the URL and secret current when the
+    # event committed; at exit, queued deliveries get a few seconds to finish.
+    def start_webhook_queue
+      return if store.webhook_queue
+
+      store.webhook_queue = WebhookQueue.new do |job|
+        Rails.application.executor.wrap do
+          event = DispatchEvent.find_by(id: job.fetch(:event_id))
+          WebhookNotifier.new(url: job.fetch(:url), secret: job.fetch(:secret)).deliver(event) if event
+        end
+      end
+      queue = store.webhook_queue
+      at_exit { queue.shutdown(timeout: 5) }
     end
 
     # "token:role,token:role"
