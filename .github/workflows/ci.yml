@@ -236,10 +236,15 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    env:
-      BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
+      # The checkout is the PR's merge commit. Its first parent (HEAD^1) is the exact base-branch
+      # commit that merge was built on, so base and proposed rules differ by exactly this PR.
+      # pull_request.base.sha can be stale or differ from that parent when the base branch moved
+      # after the event, which would attribute other merged changes to this PR. fetch-depth: 2
+      # brings in that parent.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with:
           ruby-version: ${{ env.RUBY_VERSION }}
@@ -247,7 +252,8 @@ jobs:
       - name: Fetch the PR base's rules
         id: base
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          BASE_SHA=$(git rev-parse HEAD^1)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
           if git cat-file -e "$BASE_SHA:config/dispatch_rules.json" 2>/dev/null; then
             git show "$BASE_SHA:config/dispatch_rules.json" > base_rules.json
             echo "present=true" >> "$GITHUB_OUTPUT"
