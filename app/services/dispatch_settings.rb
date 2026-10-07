@@ -68,6 +68,7 @@ module DispatchSettings
     def api_tokens=(tokens)
       bad = tokens.values - ROLES
       raise ArgumentError, "unknown API token role(s): #{bad.join(', ')}" unless bad.empty?
+      raise ArgumentError, "an API token contains whitespace" if tokens.keys.any? { |t| t.to_s.match?(/\s/) || t.to_s.empty? }
 
       store.api_tokens = tokens.dup
     end
@@ -127,12 +128,18 @@ module DispatchSettings
       at_exit { queue.shutdown(timeout: 5) }
     end
 
-    # "token:role,token:role"
+    # "token:role,token:role". Space around the commas is allowed; a token containing
+    # whitespace or listed twice refuses to boot (Q57). Messages name the entry by position,
+    # never the token itself.
     def parse_tokens(text)
-      text.split(",").map(&:strip).reject(&:empty?).each_with_object({}) do |pair, tokens|
-        token, role = pair.split(":", 2).map { |part| part.to_s.strip }
-        raise InvalidConfig, "DISPATCH_API_TOKENS: expected token:role, got #{pair.inspect}" if token.empty? || role.to_s.empty?
-        raise InvalidConfig, "DISPATCH_API_TOKENS: unknown role #{role.inspect} (allowed: #{ROLES.join(', ')})" unless ROLES.include?(role)
+      text.split(",").map(&:strip).reject(&:empty?).each_with_index.with_object({}) do |(pair, i), tokens|
+        entry = "DISPATCH_API_TOKENS entry #{i + 1}"
+        token, role = pair.split(":", 2)
+        role = role.to_s.strip
+        raise InvalidConfig, "#{entry}: expected token:role" if token.to_s.empty? || role.empty?
+        raise InvalidConfig, "#{entry}: the token contains whitespace" if token.match?(/\s/)
+        raise InvalidConfig, "#{entry}: unknown role #{role.inspect} (allowed: #{ROLES.join(', ')})" unless ROLES.include?(role)
+        raise InvalidConfig, "#{entry}: the token is listed more than once" if tokens.key?(token)
 
         tokens[token] = role
       end
