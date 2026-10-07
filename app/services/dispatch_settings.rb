@@ -3,7 +3,10 @@
 # a non-numeric rate limit, or a webhook URL without a signing secret.
 #
 # Values live in Rails.configuration.x.dispatch, so development code reloading keeps
-# them. Tests replace them per scenario and call reset! afterwards.
+# them. Tests replace them per scenario and call reset! afterwards. The override setters
+# (rules=, api_tokens=, webhook_url=, webhook_secret=, configure_rate_limit) are test-only,
+# like ClaimDispatcher's race seam: outside the test environment they raise, so no code
+# path can swap the live rules, tokens or webhook target (BUG-026).
 module DispatchSettings
   ROLES = %w[ops adjuster].freeze
   # Development gets fixed tokens so the API is usable out of the box; nowhere else does.
@@ -43,7 +46,7 @@ module DispatchSettings
       boot = store.boot
       store.rules = boot.rules
       store.api_tokens = boot.api_tokens.dup
-      configure_rate_limit(limit: boot.rate_limit, window_seconds: boot.rate_window)
+      install_rate_limiter(limit: boot.rate_limit, window_seconds: boot.rate_window)
       store.webhook_url = boot.webhook_url
       store.webhook_secret = boot.webhook_secret
     end
@@ -54,6 +57,7 @@ module DispatchSettings
     end
 
     def rules=(config)
+      test_only!(:rules=)
       raise ArgumentError, "expected a Dispatch::RulesConfig" unless config.is_a?(Dispatch::RulesConfig)
 
       store.rules = config
@@ -70,6 +74,7 @@ module DispatchSettings
     end
 
     def api_tokens=(tokens)
+      test_only!(:api_tokens=)
       bad = tokens.values - ROLES
       raise ArgumentError, "unknown API token role(s): #{bad.join(', ')}" unless bad.empty?
       raise ArgumentError, "an API token contains whitespace" if tokens.keys.any? { |t| t.to_s.match?(/\s/) || t.to_s.empty? }
@@ -82,7 +87,8 @@ module DispatchSettings
     end
 
     def configure_rate_limit(limit:, window_seconds:)
-      store.rate_limiter = RateLimiter.new(limit: limit, window_seconds: window_seconds)
+      test_only!(:configure_rate_limit)
+      install_rate_limiter(limit: limit, window_seconds: window_seconds)
     end
 
     def webhook_url
@@ -90,6 +96,7 @@ module DispatchSettings
     end
 
     def webhook_url=(url)
+      test_only!(:webhook_url=)
       check_webhook_url!(url) if url
       store.webhook_url = url
     end
@@ -99,6 +106,7 @@ module DispatchSettings
     end
 
     def webhook_secret=(secret)
+      test_only!(:webhook_secret=)
       store.webhook_secret = secret
     end
 
@@ -116,6 +124,16 @@ module DispatchSettings
 
     def store
       Rails.configuration.x.dispatch
+    end
+
+    def test_only!(setter)
+      return if Rails.env.test?
+
+      raise ArgumentError, "DispatchSettings.#{setter} is a test-only override (Rails.env is #{Rails.env}); "                            "configure the app through the environment (docs/CONFIGURATION.md)"
+    end
+
+    def install_rate_limiter(limit:, window_seconds:)
+      store.rate_limiter = RateLimiter.new(limit: limit, window_seconds: window_seconds)
     end
 
     # Q57: an absolute http or https URL with a host.

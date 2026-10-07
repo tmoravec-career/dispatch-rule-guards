@@ -63,4 +63,32 @@ class DispatchSettingsTest < ActiveSupport::TestCase
   test "tokens set at runtime are checked too" do
     assert_raises(ArgumentError) { DispatchSettings.api_tokens = { "a b" => "ops" } }
   end
+
+  # BUG-026: the per-scenario overrides can't swap live settings outside test.
+  test "the override setters raise outside the test environment and change nothing" do
+    rules = DispatchSettings.rules
+    tokens = DispatchSettings.api_tokens
+    limiter = DispatchSettings.rate_limiter
+    empty_rules = Dispatch::RulesConfig.from_h({ "rules" => [] })
+    Rails.stub(:env, ActiveSupport::EnvironmentInquirer.new("production")) do
+      {
+        "rules=" => -> { DispatchSettings.rules = empty_rules },
+        "api_tokens=" => -> { DispatchSettings.api_tokens = { "x" => "ops" } },
+        "webhook_url=" => -> { DispatchSettings.webhook_url = "http://hooks.test/in" },
+        "webhook_secret=" => -> { DispatchSettings.webhook_secret = "s" },
+        "configure_rate_limit" => -> { DispatchSettings.configure_rate_limit(limit: 1, window_seconds: 1) }
+      }.each do |setter, call|
+        error = assert_raises(ArgumentError, setter) { call.call }
+        assert_includes error.message, "test-only", setter
+      end
+      assert_same rules, DispatchSettings.rules
+      assert_equal tokens, DispatchSettings.api_tokens
+      assert_nil DispatchSettings.webhook_url
+      assert_same limiter, DispatchSettings.rate_limiter
+
+      # Boot still installs its own values through reset!.
+      DispatchSettings.reset!
+      refute_same limiter, DispatchSettings.rate_limiter
+    end
+  end
 end
