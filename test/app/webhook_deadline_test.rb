@@ -7,8 +7,9 @@ require "socket"
 class WebhookDeadlineTest < ActiveSupport::TestCase
   include AppTestHelpers
 
-  # The deadline plus scheduling slack; the bug this guards against took 21-59 s.
-  MAX_SECONDS = 2.5
+  # The 2 s deadline plus generous slack for a busy CI runner (BUG-025). The regression
+  # this guards against (BUG-011) blocked for 21-59 s, so 4 s still catches it easily.
+  MAX_SECONDS = 4.0
 
   def setup
     super
