@@ -20,6 +20,10 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
+# Run ONE Puma process: never enable cluster mode (`workers`). The API rate limiter, the
+# webhook delivery queue and the controllable clock all live in this process's memory, so
+# several processes would each count, queue and keep time separately. Scale with threads
+# (RAILS_MAX_THREADS), not workers. See docs/CONFIGURATION.md.
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
