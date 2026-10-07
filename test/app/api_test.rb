@@ -13,6 +13,15 @@ class ApiTest < ActionDispatch::IntegrationTest
     response.parsed_body.fetch("errors")
   end
 
+  test "a page more than 1,000,000 rows in is 422 out_of_range, not a 500 (Q57)" do
+    { "page=99999999999999999999" => 422, "page=40001" => 422, "page=10001&per_page=100" => 422,
+      "page=40000" => 200, "page=10000&per_page=100" => 200 }.each do |query, status|
+      get "/api/claims?#{query}", headers: auth
+      assert_response status, query
+      assert_equal [{ "field" => "page", "code" => "out_of_range" }], errors, query if status == 422
+    end
+  end
+
   test "an unrouted API path is authenticated first, then a JSON 404" do
     get "/api/nothing/here"
     assert_response :unauthorized

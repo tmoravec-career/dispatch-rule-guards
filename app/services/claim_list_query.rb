@@ -5,6 +5,7 @@ class ClaimListQuery
   PARAMS = (FILTERS + %w[page per_page]).freeze
   DEFAULT_PER_PAGE = 25
   MAX_PER_PAGE = 100
+  MAX_WINDOW = 1_000_000
 
   Error = Struct.new(:field, :code)
 
@@ -36,6 +37,9 @@ class ClaimListQuery
   def validate
     @page = integer_param("page", 1, 1..)
     @per_page = integer_param("per_page", DEFAULT_PER_PAGE, 1..MAX_PER_PAGE)
+    # Q57: a page may reach at most MAX_WINDOW rows in, which also keeps OFFSET in range.
+    # per_page is at most 100, so only a large page can cross it.
+    errors << Error.new("page", "out_of_range") if errors.empty? && page * per_page > MAX_WINDOW
     inclusion("queue") { |v| Claim.known_queue?(v, @rules) }
     inclusion("status") { |v| Claim::STATUSES.include?(v) }
     inclusion("adjuster_id") { |v| Adjuster.exists?(id: v) }
