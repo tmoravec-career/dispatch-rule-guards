@@ -13,4 +13,8 @@ end
 
 require "dispatch/gate/cli"
 
+# LF on every platform: Windows text-mode stdout would turn the Markdown's newlines into CRLF (Q55).
+$stdout.binmode
+$stderr.binmode
+
 exit Dispatch::Gate::CLI.run(ARGV)

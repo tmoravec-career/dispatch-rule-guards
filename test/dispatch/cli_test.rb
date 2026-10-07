@@ -147,6 +147,17 @@ class CLITest < Minitest::Test
     end
   end
 
+  # Q55: the real bin/ prints LF-only Markdown on every platform (one subprocess, ~0.1 s).
+  def test_stdout_uses_lf_line_endings
+    require "open3"
+    require "rbconfig"
+    out, _err, status = Open3.capture3(RbConfig.ruby, "-I", File.join(ROOT, "lib"), File.join(ROOT, "bin/rule_diff"),
+                                       *replay_args, binmode: true)
+    assert_equal 1, status.exitstatus
+    assert_includes out, "## Summary\n"
+    refute_includes out, "\r"
+  end
+
   def test_help_exits_0
     status, out, = gate("--help")
     assert_equal 0, status
