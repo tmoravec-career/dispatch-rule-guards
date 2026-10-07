@@ -23,11 +23,19 @@ class Adjuster < ApplicationRecord
     EngineRoster.new(order(:id).map { |a| a.to_engine(releasing: a.id == releasing) })
   end
 
-  # Upserts adjusters from a validated Dispatch::Roster (seeds, test setup).
-  def self.load_roster!(roster)
+  # Upserts adjusters from a validated Dispatch::Roster (seeds, test setup). New adjusters
+  # start at the roster's open_claims baseline. An adjuster already in the table keeps its
+  # live counter (BUG-022): resetting it would free slots that real claims still hold, and
+  # the capacity audit, which reads the counter, could not see the over-assignment.
+  # Tests that replace the roster wholesale pass reset_open_claims: true.
+  def self.load_roster!(roster, reset_open_claims: false)
     now = Time.current
     rows = roster.adjusters.map { |a| a.to_h.merge("created_at" => now, "updated_at" => now) }
-    upsert_all(rows, unique_by: :id) unless rows.empty?
+    return if rows.empty?
+
+    updated = Dispatch::Adjuster::KEYS + ["updated_at"] - ["id"]
+    updated -= ["open_claims"] unless reset_open_claims
+    upsert_all(rows, unique_by: :id, update_only: updated)
   end
 
   # Not Roster-validated: the stored counter can exceed capacity after a lost race, and

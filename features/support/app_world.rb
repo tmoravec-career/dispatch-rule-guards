@@ -12,9 +12,10 @@ module AppWorld
   end
 
   # Replaces the app's roster with a validated one: the same validation as the engine layer.
+  # The table's open_claims column is the roster's, as "replaces" means (STEP_GLOSSARY.md).
   def load_app_roster!(roster)
     Adjuster.where.not(id: roster.adjusters.map(&:id)).delete_all
-    Adjuster.load_roster!(roster)
+    Adjuster.load_roster!(roster, reset_open_claims: true)
   end
 
   def app_adjuster(id)

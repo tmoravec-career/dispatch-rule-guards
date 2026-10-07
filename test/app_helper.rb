@@ -18,7 +18,7 @@ module AppTestHelpers
     DispatchSettings.reset!
     DispatchSettings.api_tokens = { OPS => "ops", ADJUSTER => "adjuster" }
     DispatchSettings.rules = Dispatch::RulesConfig.from_h(base_rules)
-    Adjuster.load_roster!(Dispatch::Roster.from_h({ "adjusters" => background_roster }))
+    Adjuster.load_roster!(Dispatch::Roster.from_h({ "adjusters" => background_roster }), reset_open_claims: true)
   end
 
   def teardown
