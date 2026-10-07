@@ -22,6 +22,7 @@ end
 
 When("I run the capacity audit") do
   run_capacity_audit
+  audited_after_k6!
 end
 
 Then("the capacity audit exits with status {int}") do |status|

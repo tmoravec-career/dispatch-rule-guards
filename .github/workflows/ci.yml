@@ -1,0 +1,410 @@
+# Dispatch Rules Guard CI (PRODUCT_BRIEF.md "Quality bar", docs/specs/LOAD_TEST_CRITERIA.md).
+#
+# Every push to main and every PR:
+#   engine       engine + tools unit tests with plain `ruby -Ilib`: no bundle, no database (fast signal)
+#   contracts    the engine suite again under the bundle with CONTRACTS=1; any skipped test fails it (L11)
+#   app          test/app (Rails layer)
+#   acceptance   Cucumber default profile (k6 excluded), JUnit uploaded
+#   k6-smoke     @k6_pr: k6 smoke against a real app + the capacity audit (the PR's load gate)
+#   docker       builds both images, boots the app with compose, k6 smoke from the compose k6 service
+#   rule-gate    PRs only: bin/rule_diff against the PR base's rules, sticky PR comment, fails on breach
+# Nightly (and manual):
+#   k6-nightly   @k6_nightly: load, storm, soak, stress (informational) and the latency-breach checks
+#   flake-hunt   the acceptance suite 3 times, merged by script/flake_report.rb
+#
+# Thresholds and policies live in the code (k6 script, bin/rule_diff defaults), not here: no job
+# relaxes them, and no job uses continue-on-error.
+#
+# Actions are pinned to full commit SHAs (tag in the trailing comment).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *" # nightly, 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      soak_duration:
+        description: "K6_SOAK_DURATION for the soak profile (e.g. 2m, 2h)"
+        required: false
+        default: "2m"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# `shell: bash` runs every step with -eo pipefail, so `cmd | tee log` fails when cmd fails.
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUBY_VERSION: "3.3.12"
+  K6_VERSION: "2.2.0"
+
+jobs:
+  engine:
+    name: Engine unit tests (no bundle)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler: none
+      - name: Engine tests (plain ruby -Ilib, no gems)
+        run: ruby -Ilib -Itest -e 'Dir["test/dispatch/**/*_test.rb"].sort.each { |f| require "./#{f}" }'
+      - name: Tool tests (bin scripts, stress runner, flake report)
+        run: ruby -Ilib -Itest -e 'Dir["test/tools/**/*_test.rb"].sort.each { |f| require "./#{f}" }'
+      - name: The impact gate runs without a bundle
+        run: ruby bin/rule_diff --base config/dispatch_rules.json --proposed config/dispatch_rules.json --markdown-out /dev/null
+
+  contracts:
+    name: Contract tests (CONTRACTS=1)
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - name: Engine suite with the JSON Schema contract tests
+        env:
+          CONTRACTS: "1"
+        run: |
+          set -o pipefail
+          bundle exec ruby -Ilib -Itest -e 'Dir["test/dispatch/**/*_test.rb"].sort.each { |f| require "./#{f}" }' | tee contracts.log
+      - name: Fail if any test skipped (review note L11)
+        run: |
+          # A contract test that skips (e.g. json_schemer not loaded) must fail CI, not pass quietly.
+          if grep -q "were SKIPPED" contracts.log; then
+            echo "::error::webhook contract tests were skipped under CI"
+            exit 1
+          fi
+          summary=$(grep -E "^[0-9]+ runs, " contracts.log | tail -1)
+          echo "$summary"
+          if ! echo "$summary" | grep -Eq ", 0 skips$"; then
+            echo "::error::tests skipped under CONTRACTS=1: $summary"
+            exit 1
+          fi
+
+  app:
+    name: App tests (test/app)
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILS_ENV: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - run: bin/rails db:prepare
+      - run: bundle exec ruby -Itest -e 'Dir["test/app/**/*_test.rb"].sort.each { |f| require "./#{f}" }'
+
+  acceptance:
+    name: Cucumber acceptance
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILS_ENV: test
+      CUCUMBER_JUNIT_DIR: reports/junit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        id: chrome
+        with:
+          install-chromedriver: true
+      - run: bin/rails db:prepare
+      - name: Cucumber (default tags; k6 scenarios excluded)
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.chrome.outputs.chromedriver-path }}
+        run: bundle exec cucumber -p ci
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cucumber-junit
+          path: reports/junit/
+          if-no-files-found: warn
+
+  k6-smoke:
+    name: k6 smoke + capacity audit (@k6_pr)
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILS_ENV: test
+      CUCUMBER_JUNIT_DIR: reports/junit-k6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          k6-version: ${{ env.K6_VERSION }}
+      - run: bin/rails db:prepare
+      - name: Smoke profile, thresholds, then the capacity audit
+        run: bundle exec cucumber -p ci --tags @k6_pr
+      - name: Upload k6 summaries, logs and audit output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: k6-smoke
+          path: |
+            reports/k6/
+            reports/junit-k6/
+          if-no-files-found: warn
+
+  docker:
+    name: Docker images + compose smoke
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Throwaway values for this job's container only.
+      SECRET_KEY_BASE: ci-only-secret-key-base-not-used-anywhere-else-0123456789abcdef
+      DISPATCH_API_TOKENS: ci-ops-token:ops
+      K6_API_TOKEN: ci-ops-token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # BUG-028: reports/ is gitignored, so it doesn't exist after checkout. If a compose bind
+      # (./reports, ./reports/k6) got there first, the rootful daemon would create it as root and
+      # every later write by the runner (or by k6, uid 12345, or the test image, uid 1000) would
+      # get Permission denied. Create it now, as the runner, writable by every container user.
+      - name: Create the bind-mounted reports directories
+        run: |
+          mkdir -p reports/k6
+          chmod 777 reports reports/k6
+      - name: Validate docker-compose.yml
+        run: docker compose --profile test --profile load config --quiet
+      - name: Build the app and test images
+        run: docker compose --profile test build app test
+      - name: Engine tests inside the test image
+        run: docker compose run --rm --no-deps test ruby -Ilib -Itest -e 'Dir["test/dispatch/**/*_test.rb"].sort.each { |f| require "./#{f}" }'
+      - name: Start the app (db:prepare, then Puma) and wait until healthy
+        run: docker compose up --detach --wait --wait-timeout 120 app
+      - name: The API answers with the configured token
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $K6_API_TOKEN" http://localhost:3000/api/claims/stats)
+          echo "GET /api/claims/stats -> $code"
+          test "$code" = 200
+      - name: k6 smoke from the compose k6 service
+        run: docker compose --profile load run --rm k6
+      # Also (above all) after a failed k6 run (BUG-030); only a cancelled run skips it.
+      - name: Capacity audit after the k6 run
+        if: ${{ !cancelled() }}
+        run: docker compose exec -T app bin/capacity_audit | tee reports/k6/capacity-audit-docker-smoke.txt
+      - name: App logs
+        if: always()
+        run: docker compose logs app
+      - name: Upload k6 summary and audit output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docker-k6-smoke
+          path: reports/k6/
+          if-no-files-found: warn
+      - name: Stop
+        if: always()
+        run: docker compose down --volumes
+
+  rule-gate:
+    name: Rule-change impact gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # The checkout is the PR's merge commit. Its first parent (HEAD^1) is the exact base-branch
+      # commit that merge was built on, so base and proposed rules differ by exactly this PR.
+      # pull_request.base.sha can be stale or differ from that parent when the base branch moved
+      # after the event, which would attribute other merged changes to this PR. fetch-depth: 2
+      # brings in that parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler: none
+      - name: Fetch the PR base's rules
+        id: base
+        run: |
+          BASE_SHA=$(git rev-parse HEAD^1)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          if git cat-file -e "$BASE_SHA:config/dispatch_rules.json" 2>/dev/null; then
+            git show "$BASE_SHA:config/dispatch_rules.json" > base_rules.json
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run bin/rule_diff (policy defaults; exit code checked below)
+        id: gate
+        run: |
+          if [ "${{ steps.base.outputs.present }}" != "true" ]; then
+            printf '## Rule-change impact gate\n\nThe PR base has no `config/dispatch_rules.json`, so there is nothing to compare against.\n' > rule-diff.md
+            echo "status=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          ruby bin/rule_diff --base base_rules.json --proposed config/dispatch_rules.json \
+            --markdown-out rule-diff.md --json-out rule-diff.json 2> rule-diff.err
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ge 2 ] || [ ! -s rule-diff.md ]; then
+            { echo "## Rule-change impact gate: ERROR (exit $status)"; echo; echo '```'; cat rule-diff.err; echo '```'; } > rule-diff.md
+          fi
+          cat rule-diff.err >&2
+      - name: Build the PR comment
+        run: |
+          {
+            cat rule-diff.md
+            echo
+            echo "<sub>bin/rule_diff exit ${{ steps.gate.outputs.status }} (0 pass, 1 policy breach, 2 error) for ${GITHUB_SHA::7} against base ${BASE_SHA::7}.</sub>"
+          } > rule-diff-comment.md
+          cat rule-diff-comment.md >> "$GITHUB_STEP_SUMMARY"
+      # One comment per PR, updated in place on every push. PRs from forks get a read-only token,
+      # so they rely on the job summary above instead.
+      - name: Sticky PR comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: rule-change-impact-gate
+          path: rule-diff-comment.md
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rule-diff
+          path: |
+            rule-diff.md
+            rule-diff.json
+          if-no-files-found: warn
+      - name: Fail on a policy breach or an error
+        env:
+          GATE_STATUS: ${{ steps.gate.outputs.status }}
+        run: |
+          if [ "$GATE_STATUS" != "0" ]; then
+            echo "::error::rule-change impact gate failed (bin/rule_diff exit $GATE_STATUS); see the PR comment"
+            exit 1
+          fi
+
+  k6-nightly:
+    name: k6 nightly profiles + capacity audit (@k6_nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # load ~8 m, storm ~7.5 m (twice), soak 2 m + 90 s, stress up to ~6 m (twice), smoke 30 s.
+    timeout-minutes: 180
+    env:
+      RAILS_ENV: test
+      CUCUMBER_JUNIT_DIR: reports/junit-k6-nightly
+      K6_SOAK_DURATION: ${{ github.event.inputs.soak_duration || '2m' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          k6-version: ${{ env.K6_VERSION }}
+      - run: bin/rails db:prepare
+      # Each scenario boots the app and runs one profile (stress through bin/stress_run, which
+      # exits 0 after any completed run). bin/capacity_audit then runs as a scenario step or, when a
+      # failed k6 step skipped that step (or the scenario has none), in the After hook of
+      # features/support/k6_world.rb. Either way it runs after every k6 run, its output is kept in
+      # reports/k6/, and any over-assignment fails the scenario and so this job, stress included.
+      - name: load, storm, soak, stress and the latency-breach checks
+        run: bundle exec cucumber -p ci --tags @k6_nightly
+      - name: Stress breaking point
+        if: always()
+        # Artifacts are keyed per scenario run (BUG-029). The real breaking point is the stress
+        # run WITHOUT injected latency; the latency-injected one (file name ends -latency<N>ms)
+        # only proves the runner exits 0 when thresholds break early.
+        run: |
+          shopt -s nullglob
+          found=0
+          for report in reports/k6/stress_report-*.json; do
+            case "$report" in *-latency*ms.json) continue ;; esac
+            found=1
+            { echo "### Stress report (informational): $(basename "$report")"; echo; echo '```json'; cat "$report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          [ "$found" = 1 ] || echo "No stress report without injected latency was written." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload k6 summaries, stress report, logs and audit output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: k6-nightly
+          path: |
+            reports/k6/
+            reports/junit-k6-nightly/
+          if-no-files-found: warn
+
+  flake-hunt:
+    name: Flake hunt (acceptance suite x3)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RAILS_ENV: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        id: chrome
+        with:
+          install-chromedriver: true
+      - run: bin/rails db:prepare
+      - name: Run the suite 3 times
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.chrome.outputs.chromedriver-path }}
+        run: |
+          # All three runs always happen: a failing run is data for the flake report, which
+          # is the gate for this job (any flaky or broken test, or a run without JUnit, fails it).
+          for i in 1 2 3; do
+            CUCUMBER_JUNIT_DIR="reports/flake/run-$i" bundle exec cucumber -p ci && status=0 || status=$?
+            echo "run $i: cucumber exit $status"
+          done
+      - name: Flake report
+        run: |
+          set +e
+          ruby script/flake_report.rb reports/flake/run-1 reports/flake/run-2 reports/flake/run-3 \
+            --markdown reports/flake/flake-report.md --json reports/flake/flake-report.json
+          status=$?
+          set -e
+          [ -f reports/flake/flake-report.md ] && cat reports/flake/flake-report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Upload JUnit and the flake report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flake-hunt
+          path: reports/flake/
+          if-no-files-found: warn

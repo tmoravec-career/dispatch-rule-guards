@@ -93,3 +93,31 @@ Built in two developer passes: **3a** (API, webhooks, concurrency) and **3b** (s
 **Process notes, recorded honestly:**
 - The human killed one QA run for overloading the machine. QA had run 40 repetitions plus a CPU-stress job. Every later agent ran under explicit resource limits (one command at a time, capped repeats), and the flake was still diagnosed.
 - Twice QA noticed a problem but didn't file it (an unbounded webhook queue, and JSON error pages for browsers). The orchestrator filed both (BUG-017, BUG-019). A formal log makes those gaps visible.
+
+---
+
+## Phase 4: CI, Docker and load testing
+
+**Outcome:** a GitHub Actions pipeline with these jobs:
+- engine tests with no bundle;
+- contract tests that fail if they skip;
+- app tests;
+- Cucumber with JUnit output;
+- k6 smoke plus a capacity audit;
+- a Docker build with a compose smoke run;
+- the rule-change gate on PRs, posting a sticky comment;
+- a nightly job with load, storm, soak and stress profiles, plus a 3× flake hunt.
+
+Also a multi-stage, non-root Dockerfile and a compose file with `app`, `test` and `k6` services. Every action is pinned to a commit SHA. Bugs from this phase: 6 (BUG-028 to 033), 5 fixed and 1 deferred.
+
+**Constraint:** the machine has no Docker and the repo had no GitHub remote yet, so **the CI jobs and the Docker build were verified by reading, not by running**. That made the code review the main safeguard. Everything runnable was run locally under hard caps: 5 VUs, 30 s per k6 run, a budget of 8 runs, and no stray processes.
+
+| Step | Agent | What happened |
+|---|---|---|
+| 1 | devops-engineer | Built the k6 profiles, stress runner, flake report, Docker, compose and CI. Locally, smoke had p95 20 ms against a 300 ms budget, and stress reported its breaking point when 500 ms of latency was injected. Added a test-only latency switch (refused at boot outside test) and stopped at the run cap. |
+| 2 | orchestrator | The safety classifier was unavailable during one DevOps round. Audited its work with read-only tools: nothing pushed (no remote), no real credentials, and the new harness variable is test-only. |
+| 3 | code-reviewer | **REQUEST CHANGES**, reading only. **The Docker CI job would have failed on the first push**: a gitignored `reports/` folder gets created as root by the Docker daemon, so the next `mkdir` fails. Also, **nightly runs overwrote each other's reports**, so the summary would always show the deliberately broken stress run. And **the capacity audit was skipped exactly when a load run failed**, which is when over-assignment is most likely. Confirmed the gate permissions, sticky-comment mechanics, SHA pins and threshold semantics were correct. |
+| 4 | devops-engineer | Fixed all 5. **Caught its own broken fix:** the first BUG-030 hook ran after database cleanup and audited an empty database ("0 adjusters checked"). |
+| 5 | qa-engineer | **PASS.** Used its single allowed k6 run to prove the last gap: with 500 ms of injected latency, k6 failed, and the audit still ran and saw `25 adjusters checked, 0 over capacity`. |
+
+**What can only be proven on GitHub:** the first real CI run, the Docker build, the sticky PR comment on a real merge commit, and the nightly profiles at full scale (20 to 320 VUs).

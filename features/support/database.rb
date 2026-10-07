@@ -27,6 +27,10 @@ Before("(#{APP_TAGS}) and not (#{SHARED_DATABASE_TAGS})") do
   DatabaseCleaner.start
 end
 
-After(APP_TAGS) do
+After(APP_TAGS) do |scenario|
+  # k6 scenarios: stop the app server and run the post-k6 capacity audit (which may fail the
+  # scenario) BEFORE the data it must see is deleted (features/support/k6_world.rb, BUG-030).
+  finish_k6_scenario!(scenario) if scenario.source_tag_names.intersect?(%w[@k6_pr @k6_nightly])
+ensure
   DatabaseCleaner.clean
 end

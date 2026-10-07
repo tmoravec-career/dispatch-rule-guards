@@ -11,6 +11,7 @@ module Api
 
     wrap_parameters false
 
+    before_action :add_test_latency
     before_action :authenticate!
     before_action :enforce_rate_limit!
 
@@ -32,6 +33,13 @@ module Api
     def process_action(...)
       request.request_parameters = {}
       super
+    end
+
+    # DISPATCH_TEST_LATENCY_MS (test environment only; refused at boot elsewhere): slows every API response so the
+    # k6 latency-breach scenarios can prove a run fails through its thresholds alone.
+    def add_test_latency
+      ms = DispatchSettings.test_latency_ms
+      sleep(ms / 1000.0) if ms.positive?
     end
 
     # The scheme is "Bearer" and the token is matched exactly, case-sensitively (Q39).
