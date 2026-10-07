@@ -1,0 +1,25 @@
+# SQLite with a file-based database in every environment, never :memory:, so the
+# capacity audit subprocess and concurrent dispatch threads share one database
+# (STEP_GLOSSARY.md section 9).
+#
+# timeout: the busy timeout in ms. Concurrent writers wait for SQLite's write lock
+# instead of failing with SQLite3::BusyException (Q37).
+default: &default
+  adapter: sqlite3
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: storage/development.sqlite3
+
+# The @concurrency scenarios run N worker threads plus the main thread, each with
+# its own connection, so the pool must hold at least N + 1 (the step checks).
+test:
+  <<: *default
+  pool: <%= ENV.fetch("DB_POOL") { 25 } %>
+  database: storage/test.sqlite3
+
+production:
+  <<: *default
+  database: <%= ENV.fetch("DATABASE_PATH") { "storage/production.sqlite3" } %>
