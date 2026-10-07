@@ -331,10 +331,18 @@ jobs:
         run: bundle exec cucumber -p ci --tags @k6_nightly
       - name: Stress breaking point
         if: always()
+        # Artifacts are keyed per scenario run (BUG-029). The real breaking point is the stress
+        # run WITHOUT injected latency; the latency-injected one (file name ends -latency<N>ms)
+        # only proves the runner exits 0 when thresholds break early.
         run: |
-          if [ -f reports/k6/stress_report.json ]; then
-            { echo '### Stress report (informational)'; echo; echo '```json'; cat reports/k6/stress_report.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          shopt -s nullglob
+          found=0
+          for report in reports/k6/stress_report-*.json; do
+            case "$report" in *-latency*ms.json) continue ;; esac
+            found=1
+            { echo "### Stress report (informational): $(basename "$report")"; echo; echo '```json'; cat "$report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          [ "$found" = 1 ] || echo "No stress report without injected latency was written." >> "$GITHUB_STEP_SUMMARY"
       - name: Upload k6 summaries, stress report, logs and audit output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

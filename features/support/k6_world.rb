@@ -17,7 +17,11 @@ require "fileutils"
 #
 # Waiting is event-driven: the boot waits for Puma's "Listening on" line on the server's
 # output (IO.select with a deadline), and shutdown waits on the process with a deadline.
-# k6 output and summaries go to reports/k6/ (uploaded by CI).
+# k6 output and summaries go to reports/k6/ (uploaded by CI), every file keyed by the run
+# (BUG-029): <profile>-L<scenario line>-<scenario slug>[-latency<N>ms], so the nightly
+# scenarios that run the same profile twice never overwrite each other's evidence.
+# K6_APP_LATENCY_MS (harness only) injects latency into the booted app when no step does,
+# e.g. to force a k6 failure locally.
 module K6World
   ROOT = File.expand_path("../..", __dir__)
   SCRIPT = File.join(ROOT, "load", "k6", "dispatch.js")
@@ -53,6 +57,22 @@ module K6World
     @k6_app_wanted = true
   end
 
+  def k6_scenario=(scenario)
+    line = scenario.location.to_s[/:(\d+)/, 1]
+    slug = scenario.name.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 48].sub(/-\z/, "")
+    @k6_scenario_key = ["L#{line}", slug].reject(&:empty?).join("-")
+  end
+
+  def k6_app_latency_ms
+    @k6_app_latency_ms || ENV["K6_APP_LATENCY_MS"].presence&.then { |v| Integer(v, 10) }
+  end
+
+  # The file key for this scenario's run of `profile`.
+  def k6_artifact_key(profile)
+    latency = k6_app_latency_ms
+    [profile, @k6_scenario_key, (latency && !external_app? ? "latency#{latency}ms" : nil)].compact.join("-")
+  end
+
   def k6_app_latency_ms=(ms)
     flunk("the app is not booted by this suite when K6_BASE_URL is set; latency can't be injected") if external_app?
     @k6_app_latency_ms = ms
@@ -79,7 +99,7 @@ module K6World
 
     @k6_app_port = free_port
     env = { "RAILS_ENV" => "test", "DISPATCH_API_TOKENS" => "#{k6_api_token}:ops", "PORT" => @k6_app_port.to_s,
-            "DISPATCH_TEST_LATENCY_MS" => @k6_app_latency_ms&.to_s }
+            "DISPATCH_TEST_LATENCY_MS" => k6_app_latency_ms&.to_s }
     FileUtils.mkdir_p([REPORT_DIR, File.join(ROOT, "tmp", "pids")])
     reader, writer = IO.pipe
     @k6_app_pid = Process.spawn(env, RbConfig.ruby, File.join(ROOT, "bin", "rails"), "server", "-e", "test",
@@ -120,18 +140,19 @@ module K6World
 
   def run_k6_profile(profile, soak_duration: nil)
     k6 = StressRun.k6_binary or flunk("k6 not found: set K6_BIN or put k6 on PATH")
-    summary = File.join(REPORT_DIR, "k6-summary-#{profile}.json")
+    key = k6_artifact_key(profile)
+    summary = File.join(REPORT_DIR, "k6-summary-#{key}.json")
     FileUtils.mkdir_p(REPORT_DIR)
     FileUtils.rm_f(summary)
     env = { "K6_PROFILE" => profile, "K6_BASE_URL" => k6_base_url, "K6_API_TOKEN" => k6_api_token, "K6_RUN_ID" => k6_run_id }
     env["K6_SOAK_DURATION"] = soak_duration if soak_duration
     output, status = Open3.capture2e(env, k6, "run", "--quiet", "--no-color", "-e", "K6_PROFILE=#{profile}",
                                      "--summary-export", summary, SCRIPT, chdir: ROOT)
-    File.write(File.join(REPORT_DIR, "k6-#{profile}.log"), output)
+    File.write(File.join(REPORT_DIR, "k6-#{key}.log"), output)
     log("k6 #{profile} (exit #{status.exitstatus}):\n#{output.lines.last(45).join}")
     @k6_ran = true
     @audited_after_k6 = false
-    @k6_label = profile
+    @k6_label = key
     @k6_run = K6Run.new(profile, status.exitstatus, output, summary)
   end
 
@@ -140,15 +161,19 @@ module K6World
   end
 
   def run_stress_runner
-    report = File.join(REPORT_DIR, "stress_report.json")
-    FileUtils.rm_f(report)
+    key = k6_artifact_key("stress")
+    report = File.join(REPORT_DIR, "stress_report-#{key}.json")
+    summary = File.join(REPORT_DIR, "k6-summary-#{key}.json")
+    FileUtils.mkdir_p(REPORT_DIR)
+    FileUtils.rm_f([report, summary])
     env = { "K6_BASE_URL" => k6_base_url, "K6_API_TOKEN" => k6_api_token, "K6_RUN_ID" => k6_run_id }
-    output, status = Open3.capture2e(env, RbConfig.ruby, File.join(ROOT, "bin", "stress_run"), "--report", report, chdir: ROOT)
-    File.write(File.join(REPORT_DIR, "stress_run.log"), output)
+    output, status = Open3.capture2e(env, RbConfig.ruby, File.join(ROOT, "bin", "stress_run"),
+                                     "--report", report, "--summary", summary, chdir: ROOT)
+    File.write(File.join(REPORT_DIR, "stress_run-#{key}.log"), output)
     log("bin/stress_run (exit #{status.exitstatus}):\n#{output.lines.last(30).join}")
     @k6_ran = true
     @audited_after_k6 = false
-    @k6_label = "stress"
+    @k6_label = key
     @stress_run = StressRunResult.new(status.exitstatus, output, report)
   end
 
@@ -217,7 +242,7 @@ module K6World
 
   # Keeps the pipe drained so the server never blocks on a full pipe.
   def drain_server_output(reader, boot_log)
-    path = File.join(REPORT_DIR, "k6-app-server.log")
+    path = File.join(REPORT_DIR, "k6-app-server-#{@k6_scenario_key || 'external'}.log")
     File.write(path, boot_log)
     @k6_app_log_thread = Thread.new do
       File.open(path, "a") { |f| IO.copy_stream(reader, f) }
@@ -230,6 +255,10 @@ module K6World
 end
 
 World(K6World)
+
+Before("@k6_pr or @k6_nightly") do |scenario|
+  self.k6_scenario = scenario
+end
 
 # The server goes before the database is cleaned (After hooks run in reverse order of
 # definition, and features/support/database.rb is loaded first).
