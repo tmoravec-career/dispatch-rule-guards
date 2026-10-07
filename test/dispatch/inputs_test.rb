@@ -62,6 +62,13 @@ class InputsTest < Minitest::Test
     assert_equal false, claims.first.cat_event
   end
 
+  def test_unvalidated_from_h_treats_absent_keys_as_absent_fields
+    claim = Dispatch::Claim.from_h("claim_number" => "C", "line_of_business" => "auto", "loss_state" => "TX")
+    assert_nil claim.estimated_loss
+    assert_nil claim.vehicle_value
+    assert_equal false, claim.cat_event
+  end
+
   def test_claim_validation
     errors = claim_errors([
       { "claim_number" => "CLM-1", "line_of_business" => "boat", "estimated_loss" => 1.5, "loss_state" => "tx" },

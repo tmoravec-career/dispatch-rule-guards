@@ -18,10 +18,11 @@ module Dispatch
       freeze
     end
 
-    # Unvalidated construction from a string- or symbol-keyed hash.
+    # Unvalidated construction from a string- or symbol-keyed hash. Absent keys become
+    # absent fields (nil), which conditions treat as not matching (Q3).
     def self.from_h(hash)
-      attrs = hash.to_h.transform_keys(&:to_s).slice(*FIELDS)
-      new(**attrs.transform_keys(&:to_sym))
+      attrs = hash.to_h.transform_keys(&:to_s)
+      new(**FIELDS.to_h { |f| [f.to_sym, attrs[f]] })
     end
 
     # Validates a parsed claims file (a JSON array of claim objects) and returns Claims.
