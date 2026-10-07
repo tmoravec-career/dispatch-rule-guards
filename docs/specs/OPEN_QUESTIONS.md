@@ -653,3 +653,18 @@ That's well under the 10% budget.
 If check 1 fails, raise capacity on the pool the failure report names; don't change the constraints. If check 3 fails, that's a product finding, so escalate it rather than tuning the roster until it passes.
 
 The feature Backgrounds keep their own tables and must not read `config/adjusters.json`.
+
+---
+
+### Q55. Gaps found by QA in phase 2 (G1–G5)
+
+**Decision: orchestrator default, delegated by Tim, 2026-10-06.**
+
+- **G1, fractional thresholds.** Probes are always whole dollars, because claims are (Q1). For threshold `t`, probe `floor(t)-1`, `floor(t)`, `ceil(t)` and `ceil(t)+1`, deduplicated. For an integer `t` that is the usual `t-1, t, t+1`.
+- **Probe identity (fixes D3).** Probes are deduplicated per **(rule, field, value)**, never per value alone. Two thresholds that produce the same probe value each get their own probe, built from their own owning rule's conditions.
+- **Non-finite numbers.** Any threshold or claim value that parses to ±Infinity or NaN (e.g. `1e400`) is rejected with `non_numeric_threshold` (rules) or `invalid_value` (claims, roster).
+- **Encoding.** Files that aren't valid UTF-8 are rejected as `malformed_json` at path `$`, with exit 2. A leading UTF-8 BOM is stripped and accepted, since Windows PowerShell 5.1 writes one.
+- **G2.** A rule must have **at least one** condition (`invalid_value` at `rules[i].conditions`). The catch-all is `general_intake`.
+- **G3.** Operator and field types must agree. `gt`/`gte`/`lt`/`lte` are allowed only on numeric fields (`estimated_loss`, `vehicle_value`). `eq`/`in` values must match the field's type (string, number or boolean). A mismatch is `invalid_value`.
+- **G5.** `Roster.new` and `Roster#update` apply the same validation as the file loader.
+- **Minor.** Markdown on stdout uses LF on every platform. `duplicate_priority` is not reported for a priority that is already `invalid_value`.
