@@ -4,6 +4,13 @@ Rails.application.configure do
   config.enable_reloading = false
   config.eager_load = true
   config.consider_all_requests_local = false
+
+  # Signs the session cookie that carries the web UI's CSRF token. There are no
+  # credentials files, so it must come from the environment (docs/CONFIGURATION.md).
+  config.secret_key_base = ENV.fetch("SECRET_KEY_BASE", "").strip.presence || raise(
+    "refusing to boot in production: SECRET_KEY_BASE is not set. " \
+    "Generate one with `bin/rails secret` (see docs/CONFIGURATION.md)."
+  )
   config.action_controller.perform_caching = true
 
   # TLS is terminated in front of the app; set RAILS_FORCE_SSL=1 to enforce it here too.

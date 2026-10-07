@@ -45,6 +45,22 @@ class BootTest < ActiveSupport::TestCase
     end
   end
 
+  # BUG-021: the web UI's session cookie (and its CSRF token) needs SECRET_KEY_BASE.
+  test "production refuses to boot without SECRET_KEY_BASE and names the variable" do
+    [nil, "", "  "].each do |value|
+      out, err, status = boot("RAILS_ENV" => "production", "SECRET_KEY_BASE" => value)
+      refute status.success?, "booted with SECRET_KEY_BASE=#{value.inspect}"
+      refute_includes out, "BOOTED"
+      assert_includes err, "refusing to boot in production: SECRET_KEY_BASE is not set"
+    end
+  end
+
+  test "production boots with SECRET_KEY_BASE set" do
+    out, err, status = boot("RAILS_ENV" => "production", "SECRET_KEY_BASE" => "a" * 128)
+    assert status.success?, err
+    assert_includes out, "BOOTED"
+  end
+
   test "an unknown token role or an unsigned webhook stops the boot" do
     _, err, status = boot("DISPATCH_API_TOKENS" => "t1:admin")
     refute status.success?
