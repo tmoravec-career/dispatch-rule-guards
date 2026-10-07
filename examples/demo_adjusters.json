@@ -1,0 +1,127 @@
+{
+  "adjusters": [
+    {
+      "id": "ADJ-001",
+      "name": "Avery Chen",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "FL"
+      ],
+      "skills": [
+        "auto",
+        "luxury_vehicle"
+      ],
+      "capacity": 3,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-002",
+      "name": "Blake Diaz",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "FL"
+      ],
+      "skills": [
+        "auto",
+        "luxury_vehicle"
+      ],
+      "capacity": 3,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-003",
+      "name": "Casey Ford",
+      "active": true,
+      "licensed_states": [
+        "TX",
+        "LA"
+      ],
+      "skills": [
+        "property",
+        "cat",
+        "large_loss"
+      ],
+      "capacity": 4,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-004",
+      "name": "Devon Gray",
+      "active": true,
+      "licensed_states": [
+        "CA",
+        "NV",
+        "AZ"
+      ],
+      "skills": [
+        "luxury_vehicle"
+      ],
+      "capacity": 2,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-005",
+      "name": "Emery Hart",
+      "active": true,
+      "licensed_states": [
+        "CA",
+        "AZ"
+      ],
+      "skills": [
+        "auto",
+        "large_loss"
+      ],
+      "capacity": 4,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-006",
+      "name": "Finley Ito",
+      "active": true,
+      "licensed_states": [
+        "NY",
+        "NJ"
+      ],
+      "skills": [
+        "auto",
+        "property"
+      ],
+      "capacity": 4,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-007",
+      "name": "Gale Jones",
+      "active": false,
+      "licensed_states": [
+        "CA",
+        "NY"
+      ],
+      "skills": [
+        "auto",
+        "luxury_vehicle",
+        "property"
+      ],
+      "capacity": 5,
+      "open_claims": 0
+    },
+    {
+      "id": "ADJ-008",
+      "name": "Harper Kim",
+      "active": true,
+      "licensed_states": [
+        "FL",
+        "GA"
+      ],
+      "skills": [
+        "property",
+        "cat",
+        "large_loss"
+      ],
+      "capacity": 3,
+      "open_claims": 0
+    }
+  ]
+}

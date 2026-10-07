@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim_dispatched.schema.json",
+  "title": "claim.assigned / claim.unassigned webhook payload",
+  "description": "Pinned by OPEN_QUESTIONS.md Q23 and Q45-Q47. The X-Dispatch-Signature header is part of the delivery contract, not this schema. Validate with format assertion on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "event_id", "occurred_at", "sequence", "claim", "dispatch"],
+  "properties": {
+    "event": { "enum": ["claim.assigned", "claim.unassigned"] },
+    "event_id": { "type": "string", "format": "uuid" },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "claim": { "$ref": "#/$defs/claim" },
+    "dispatch": { "$ref": "#/$defs/dispatch" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event": { "const": "claim.assigned" } }, "required": ["event"] },
+      "then": { "properties": { "dispatch": { "properties": { "status": { "const": "assigned" } } } } }
+    },
+    {
+      "if": { "properties": { "event": { "const": "claim.unassigned" } }, "required": ["event"] },
+      "then": { "properties": { "dispatch": { "properties": { "status": { "const": "unassigned" } } } } }
+    }
+  ],
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_number", "line_of_business", "estimated_loss", "vehicle_value", "cat_event", "loss_state"],
+      "properties": {
+        "claim_number": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "line_of_business": { "enum": ["auto", "property", "liability"] },
+        "estimated_loss": { "type": "integer", "minimum": 0 },
+        "vehicle_value": { "type": ["integer", "null"], "minimum": 0 },
+        "cat_event": { "type": "boolean" },
+        "loss_state": {
+          "enum": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+                   "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM",
+                   "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
+                   "WV", "WI", "WY"]
+        }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "queue", "matched_rule", "adjuster_id", "reason_code", "reason"],
+      "properties": {
+        "status": { "enum": ["assigned", "unassigned"] },
+        "queue": { "type": "string", "minLength": 1 },
+        "matched_rule": { "type": ["string", "null"] },
+        "adjuster_id": { "type": ["string", "null"] },
+        "reason_code": { "enum": ["assigned", "no_qualified_adjuster", "qualified_adjusters_at_capacity"] },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "assigned" } }, "required": ["status"] },
+          "then": { "properties": { "adjuster_id": { "type": "string" }, "reason_code": { "const": "assigned" } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "unassigned" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "adjuster_id": { "type": "null" },
+              "reason_code": { "enum": ["no_qualified_adjuster", "qualified_adjusters_at_capacity"] }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
