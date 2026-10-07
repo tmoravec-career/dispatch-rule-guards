@@ -4,6 +4,7 @@ require "minitest/autorun"
 require "json"
 require "tmpdir"
 require "dispatch"
+require_relative "support/gate_background"
 
 # The webhook contract checks need json_schemer (a gem, ~1 s to load), so they run only
 # under `bundle exec` or with CONTRACTS=1. When any of them actually skipped in this run,

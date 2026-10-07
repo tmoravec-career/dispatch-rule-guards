@@ -7,33 +7,14 @@ require "dispatch/gate/cli"
 # Acceptance checks for the shipped data and the two named commands (Q53, Q54).
 class ShippedDataTest < Minitest::Test
   ROOT = File.expand_path("../..", __dir__)
-  GATE_FEATURE = File.join(ROOT, "features/rule_change_gate.feature")
   GENERATOR_STATES = Dispatch::ScenarioGenerator::STATES.keys.freeze
 
   def root(path)
     File.join(ROOT, path)
   end
 
-  # The pipe table that follows the step line containing `step` in the gate feature's Background.
-  def background_table(step)
-    lines = File.readlines(GATE_FEATURE, chomp: true)
-    start = lines.index { |l| l.include?(step) } or flunk "step #{step.inspect} not found in #{GATE_FEATURE}"
-    rows = lines.drop(start + 1).take_while { |l| l.strip.start_with?("|") }
-                .map { |l| l.strip.delete_prefix("|").delete_suffix("|").split("|").map(&:strip) }
-    header, *body = rows
-    body.map { |row| header.zip(row).to_h }
-  end
-
-  def list(cell)
-    cell.split(",").map(&:strip)
-  end
-
   def feature_roster
-    background_table('an adjusters file "roster.json" with the adjuster roster:').map do |row|
-      { "id" => row["id"], "name" => row["name"], "active" => row["active"] == "true",
-        "licensed_states" => list(row["licensed_states"]), "skills" => list(row["skills"]),
-        "capacity" => Integer(row["capacity"], 10), "open_claims" => Integer(row["open_claims"], 10) }
-    end
+    GateBackground.roster
   end
 
   def shipped_roster
@@ -43,12 +24,7 @@ class ShippedDataTest < Minitest::Test
   # --- Q53: the example files can't drift from the spec ------------------------
 
   def test_replay_claims_match_the_gate_background
-    expected = background_table('a claims file "replay.json" with the claims:').map do |row|
-      claim = { "claim_number" => row["claim_number"], "line_of_business" => row["line_of_business"],
-                "estimated_loss" => Integer(row["estimated_loss"], 10) }
-      claim["vehicle_value"] = Integer(row["vehicle_value"], 10) unless row["vehicle_value"].empty?
-      claim.merge("cat_event" => row["cat_event"] == "true", "loss_state" => row["loss_state"])
-    end
+    expected = GateBackground.replay_claims
     assert_equal 10, expected.size
     assert_equal expected, JSON.parse(File.read(root("examples/replay_claims.json")))
   end
