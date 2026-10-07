@@ -48,6 +48,27 @@ class StressRunTest < Minitest::Test
     assert_nil report["first_failed_threshold"]
   end
 
+  # BUG-032. stress_summary_all_401.json is the breach fixture with every request marked failed,
+  # as a run with a wrong token (all 401s) exports it.
+  def test_a_run_where_step_1_got_no_successful_response_is_a_misconfiguration
+    summary = JSON.parse(File.read(File.join(ROOT, "test", "fixtures", "k6", "stress_summary_all_401.json")))
+    problem = StressRun.misconfiguration(StressRun.build_report(summary, "", 99))
+
+    refute_nil problem
+    assert_includes problem, "100.0% of step 1's 4 requests failed"
+    assert_includes problem, "K6_API_TOKEN"
+  end
+
+  def test_a_real_breach_is_not_a_misconfiguration
+    assert_nil StressRun.misconfiguration(StressRun.build_report(breach_summary, ABORT_LOG, 99))
+  end
+
+  def test_a_run_whose_first_step_sent_nothing_is_a_misconfiguration
+    summary = breach_summary
+    summary["metrics"]["http_req_failed{step:step1_vus1}"].merge!("passes" => 0, "fails" => 0, "value" => 0)
+    assert_includes StressRun.misconfiguration(StressRun.build_report(summary, "", 99)), "sent no requests"
+  end
+
   def test_the_run_duration_comes_from_state_or_else_from_a_counter_rate
     assert_equal 1234, StressRun.test_run_duration_ms({ "state" => { "testRunDurationMs" => 1234 } })
     derived = StressRun.test_run_duration_ms({ "metrics" => { "http_reqs" => { "count" => 26, "rate" => 0.8651357311282195 } } })
