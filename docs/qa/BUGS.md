@@ -24,6 +24,7 @@ When the repo is on GitHub, each entry becomes an issue and the phase PR that fi
 | BUG-014 | 3a | Low | qa-engineer | A claim numbered `stats` could be created but never fetched; claim numbers with surrounding spaces were accepted | Fixed | 827c383 | `claim_input_test.rb` |
 | BUG-015 | 3a | Low | qa-engineer | An invalid UTF-8 POST body returned an HTML 400 instead of JSON `malformed_json` | Fixed | 42ec488 | `api_test.rb` |
 | BUG-016 | 3a | Low | qa-engineer | A webhook URL like `ftp://…` booted, and every delivery then failed. A missing rules file gave a raw `Errno::ENOENT` instead of the refusal message | Fixed | d8cdca5 | `dispatch_settings_test.rb` |
+| BUG-017 | 3a | Low | qa-engineer (noted, filed by orchestrator) | The in-process `WebhookQueue` has no size limit and delivers one at a time (each up to 2 s), so against a dead endpoint the backlog grows until recovery or exit | Deferred | — | — (to be handled by the transactional outbox, Q57) |
 
 ## Spec gaps (decided, not defects)
 
