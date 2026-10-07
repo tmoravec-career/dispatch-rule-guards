@@ -21,5 +21,7 @@ group :test do
   gem "database_cleaner-active_record", "~> 2.2", require: false
   gem "json_schemer", "~> 2.5", require: false
   gem "minitest", "~> 5.20", require: false
+  # Headless Chrome for the @javascript UI scenarios (re-dispatch confirmation, Q51).
+  gem "selenium-webdriver", "~> 4.30", require: false
   gem "webmock", "~> 3.26", require: false
 end
