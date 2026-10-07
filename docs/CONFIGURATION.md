@@ -30,4 +30,5 @@ The app must run as a **single Puma process** (see `config/puma.rb`): the rate l
   - `DB_POOL` (default 25) sets the connection pool. The `@concurrency` scenarios need at least N + 1 connections.
   - `CI`: when set, or when the suite runs as root (outside Windows), headless Chrome starts with `--no-sandbox`.
   - `CONTRACTS=1` runs the JSON Schema contract tests in the plain engine suite.
+  - `DISPATCH_TEST_LATENCY_MS` (default 0) adds that many milliseconds to every API response, for the k6 latency-breach scenarios. It is accepted in test and development only: **production refuses to boot** with it set.
 - **Tasks:** `bin/rails dispatch:demo_claims` reads `COUNT` (default 50) and `SEED` (the generator's default seed).

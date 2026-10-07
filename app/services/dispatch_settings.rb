@@ -28,6 +28,7 @@ module DispatchSettings
       boot.rate_window = positive_integer(env, "DISPATCH_RATE_WINDOW", 60)
       boot.webhook_url = env["DISPATCH_WEBHOOK_URL"].presence
       boot.webhook_secret = env["DISPATCH_WEBHOOK_SECRET"].presence
+      boot.test_latency_ms = parse_test_latency(env)
       if boot.webhook_url
         check_webhook_url!(boot.webhook_url)
         unless boot.webhook_secret
@@ -120,6 +121,13 @@ module DispatchSettings
       store.webhook_queue
     end
 
+    # Milliseconds added to every API response, from DISPATCH_TEST_LATENCY_MS (default 0).
+    # A test-only setting for the k6 latency-breach scenarios (STEP_GLOSSARY.md section 9):
+    # production refuses to boot with it set.
+    def test_latency_ms
+      store.boot.test_latency_ms
+    end
+
     private
 
     def store
@@ -176,6 +184,18 @@ module DispatchSettings
 
         tokens[token] = role
       end
+    end
+
+    def parse_test_latency(env)
+      raw = env["DISPATCH_TEST_LATENCY_MS"].presence or return 0
+      if Rails.env.production?
+        raise InvalidConfig, "DISPATCH_TEST_LATENCY_MS is a test-only setting and is refused in production"
+      end
+
+      value = Integer(raw, 10, exception: false)
+      raise InvalidConfig, "DISPATCH_TEST_LATENCY_MS must be a whole number of milliseconds >= 0, got #{raw.inspect}" unless value && value >= 0
+
+      value
     end
 
     def positive_integer(env, name, default)
