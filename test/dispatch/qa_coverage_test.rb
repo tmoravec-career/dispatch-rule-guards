@@ -62,8 +62,8 @@ class QaCoverageTest < Minitest::Test
         "capacity" => 5, "open_claims" => 0 }
     ] })
     [{ "rules" => [] },
-     { "rules" => [{ "id" => "any", "priority" => 1, "queue" => "q", "required_skills" => [], "conditions" => [] }] },
-     { "rules" => [{ "id" => "gi", "priority" => 1, "queue" => "general_intake", "required_skills" => [], "conditions" => [] }] }]
+     { "rules" => [{ "id" => "any", "priority" => 1, "queue" => "q", "required_skills" => [], "conditions" => [{ "field" => "line_of_business", "op" => "in", "value" => %w[auto property liability] }] }] },
+     { "rules" => [{ "id" => "gi", "priority" => 1, "queue" => "general_intake", "required_skills" => [], "conditions" => [{ "field" => "line_of_business", "op" => "in", "value" => %w[auto property liability] }] }] }]
       .each do |rules|
         result = Dispatch::Engine.new(Dispatch::RulesConfig.from_h(rules)).dispatch(claim("C", "auto", 1, nil, false, "CA"), roster)
         assert_equal "no_qualified_adjuster", result.reason_code, rules.inspect
