@@ -716,3 +716,15 @@ The feature Backgrounds keep their own tables and must not read `config/adjuster
 - **Claim number spaces.** The UI form **trims** spaces around the claim number before validating, and the API **rejects** them (Q57). Either way the stored value has no surrounding spaces.
 - **Money error codes.** The UI uses the API's codes: `out_of_range` (negative, or above 2^53−1), `not_an_integer` (non-zero cents) and `invalid_value` (anything else). Each gets its own human message.
 - **Unknown filter values.** An unknown filter value in the URL returns a 422 page with an alert and a way to clear the filters.
+
+---
+
+### Q59. CI and load decisions from phase 4
+
+**Decision: orchestrator, delegated by Tim, 2026-10-07.**
+
+- **k6 script path.** The script lives at `load/k6/dispatch.js`; the criteria and glossary are updated to match.
+- **The `DISPATCH_TEST_LATENCY_MS` seam.** It injects API latency for the latency-breach scenarios, and any environment other than test refuses to boot with it set.
+- **Rule gate in CI.** If the PR's base branch has no rules file, the gate passes with a notice. On pull requests from forks, whose token is read-only, the report goes to the job summary instead of a PR comment. A breach always fails the job.
+- **Flake hunt.** The nightly job fails on any test classified as flaky or broken.
+- **Scaled-down local runs.** Nightly profiles assert their full-scale shape (for example, the stress breaking point at the first 10-VU step). Those assertions are only meaningful at full scale in CI, not at the 5-VU local cap.

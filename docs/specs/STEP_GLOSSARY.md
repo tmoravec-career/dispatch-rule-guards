@@ -367,7 +367,7 @@ The concurrency step installs a hook that waits on a barrier until **all N threa
 | `{int} of them are unassigned with reason code {string}` | over the concurrent batch |
 | `the app is running with the seed roster and rules` | boots the app (or targets `K6_BASE_URL`) with the seed data reset |
 | `the app adds {int} ms of latency to every API response` | a test-only setting (e.g. `DISPATCH_TEST_LATENCY_MS`), refused in production |
-| `I run the k6 {string} profile` | `k6 run -e K6_PROFILE=<p> --summary-export … load/dispatch.js` |
+| `I run the k6 {string} profile` | `k6 run -e K6_PROFILE=<p> --summary-export … load/k6/dispatch.js` |
 | `I run the k6 {string} profile with duration {string}` | additionally passes `K6_SOAK_DURATION` |
 | `k6 exits with status {int}` | 0 = pass, 99 = threshold failed |
 | `the k6 summary reports threshold {string} as {string}` | `passed` / `failed`, read from the summary export |
