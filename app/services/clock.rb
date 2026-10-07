@@ -1,5 +1,5 @@
 # The app's one source of time (STEP_GLOSSARY.md section 2a). Tests freeze and advance
-# it, so time-dependent behaviour (rate-limit windows, occurred_at) never needs a sleep.
+# it, so time-dependent behaviour (rate-limit windows, occurred_at) never waits on real time.
 module Clock
   @frozen_at = nil
   @mutex = Mutex.new
