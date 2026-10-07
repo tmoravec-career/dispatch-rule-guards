@@ -122,6 +122,15 @@ class CLITest < Minitest::Test
     assert_includes err, "bad_proposed.json"
   end
 
+  # Review L8: a missing --adjusters file is reported like the other inputs.
+  def test_missing_adjusters_file_is_file_not_found
+    status, _, err = with_reports("--base", path("base.json"), "--proposed", path("base.json"),
+                                  "--adjusters", path("nope.json"))
+    assert_equal 2, status
+    assert_includes err, "--adjusters file not found: #{path('nope.json')}"
+    refute File.exist?(path("out/report.json"))
+  end
+
   def test_invalid_claims_or_roster_exit_2
     write("bad_claims.json", '[{"claim_number": "C"}]')
     status, _, err = with_reports("--base", path("base.json"), "--proposed", path("base.json"), "--claims", path("bad_claims.json"))

@@ -62,7 +62,7 @@ module Dispatch
         options = parse(@argv)
         policy = build_policy(options)
         base, proposed = load_rules(options)
-        roster = Roster.load_file(options.fetch("--adjusters", DEFAULT_ADJUSTERS))
+        roster = load_roster(options)
         claims, seed = load_claims(options)
 
         report = Impact.new(base: base, proposed: proposed, claims: claims, roster: roster,
@@ -122,10 +122,16 @@ module Dispatch
           errors << e
           nil
         end
-        raise InputError, errors.map(&:message).join("
-") if errors.any?
+        raise InputError, errors.map(&:message).join("\n") if errors.any?
 
         configs
+      end
+
+      def load_roster(options)
+        path = options.fetch("--adjusters", DEFAULT_ADJUSTERS)
+        raise UsageError, "--adjusters file not found: #{path}" unless File.file?(path)
+
+        Roster.load_file(path)
       end
 
       def load_claims(options)
