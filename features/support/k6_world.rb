@@ -209,6 +209,32 @@ module K6World
     @audited_after_k6 == true
   end
 
+
+  # Ends a k6 scenario. Called from features/support/database.rb's After hook BEFORE the
+  # database is cleaned; hook order between files is not relied on (BUG-030: an After hook
+  # of its own ran after the cleaning and audited an empty database).
+  #
+  # The capacity audit follows EVERY k6 run (LOAD_TEST_CRITERIA.md), above all a failing one:
+  # when a k6 step fails, the scenario's own audit steps are skipped, so it runs here instead,
+  # against what the server wrote. Its output is kept (reports/k6/capacity-audit-<key>.txt)
+  # and a non-zero exit fails the scenario on top of any step failure, so both are reported.
+  # The server is always stopped.
+  def finish_k6_scenario!(scenario)
+    return unless k6_ran? && !audited_after_k6?
+
+    stop_k6_app!
+    run_capacity_audit
+    audited_after_k6!
+    log("capacity audit after the k6 run (exit #{audit_run.status}):\n#{audit_run.stdout}#{audit_run.stderr}")
+    return if audit_run.status.zero?
+
+    already = scenario.failed? ? " (the scenario had already failed; both failures stand)" : ""
+    raise "capacity audit after the k6 run failed with exit #{audit_run.status}#{already}:\n" \
+          "#{audit_run.stdout}#{audit_run.stderr}"
+  ensure
+    stop_k6_app!
+  end
+
   private
 
   def free_port
@@ -258,26 +284,4 @@ World(K6World)
 
 Before("@k6_pr or @k6_nightly") do |scenario|
   self.k6_scenario = scenario
-end
-
-# The server goes before the database is cleaned (After hooks run in reverse order of
-# definition, and features/support/database.rb is loaded first).
-After("@k6_pr or @k6_nightly") do |scenario|
-  # The capacity audit follows EVERY k6 run (LOAD_TEST_CRITERIA.md), above all a failing one
-  # (BUG-030): when a k6 step fails, the scenario's own audit steps are skipped, so it runs
-  # here instead, against the database the server wrote, before anything is cleaned. Its
-  # output is kept (reports/k6/capacity-audit-<key>.txt) and a non-zero exit fails the
-  # scenario on top of any step failure, so both are reported.
-  if k6_ran? && !audited_after_k6?
-    run_capacity_audit
-    audited_after_k6!
-    log("capacity audit after the k6 run (exit #{audit_run.status}):\n#{audit_run.stdout}#{audit_run.stderr}")
-    unless audit_run.status.zero?
-      already = scenario.failed? ? " (the scenario had already failed; both failures stand)" : ""
-      raise "capacity audit after the k6 run failed with exit #{audit_run.status}#{already}:\n" \
-            "#{audit_run.stdout}#{audit_run.stderr}"
-    end
-  end
-ensure
-  stop_k6_app!
 end
