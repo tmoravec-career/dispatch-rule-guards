@@ -27,6 +27,13 @@ When the repo is on GitHub, each entry becomes an issue and the phase PR that fi
 | BUG-017 | 3a | Low | qa-engineer (noted, filed by orchestrator) | The in-process `WebhookQueue` has no size limit and delivers one at a time (each up to 2 s), so against a dead endpoint the backlog grows until recovery or exit | Deferred | — | — (to be handled by the transactional outbox, Q57) |
 | BUG-018 | 3b | Low | qa-engineer | The claim form says "Enter an amount of $0 or more." for an amount that is too **large** (e.g. `99999999999999999999` in "Estimated loss"): `out_of_range` covers both negatives and values above 2^53−1 but has one message. Repro: file a claim through `/new-claim` with that amount; expected a message naming the upper limit, actual the $0-or-more message | Open | — | — |
 | BUG-019 | 3b | Low | qa-engineer (noted, filed by orchestrator) | Every UI error page is rendered as the API's JSON body, so in production a browser user with an expired form token (422) or a 500 sees raw JSON instead of a page | Open | — | — |
+| BUG-020 | 3 | Medium | code-reviewer | `bin/rails` and `bin/rake` were committed with `#!/usr/bin/env ruby.exe`, so the app can't start on Linux CI or in Docker (`env: 'ruby.exe': No such file`). Missed because every run was on Windows | Open | — | — |
+| BUG-021 | 3 | Medium | code-reviewer | Production crashes at boot with an unexplained `ArgumentError` when `SECRET_KEY_BASE` is unset, before the Q9 refusal message; nothing documents the variable | Open | — | — |
+| BUG-022 | 3 | Low | code-reviewer | Re-running `db:seed` resets each adjuster's stored `open_claims` to the file baseline, which allows over-assignment that the capacity audit can't see (it reads the counter) | Open | — | — |
+| BUG-023 | 3 | Low | code-reviewer | If `ClaimDispatcher` is called inside an outer transaction, `requires_new` becomes a savepoint and the webhook is delivered before the real commit (latent; no current caller does this) | Open | — | — |
+| BUG-024 | 3 | Low | code-reviewer | CSRF is never exercised in tests (forgery protection is off in test), so removing the CSRF token from the form or the re-dispatch request leaves the suite green | Open | — | — |
+| BUG-025 | 3 | Low | code-reviewer | The webhook deadline test's 2.5 s limit leaves 0.5 s of slack and will flake on a busy CI runner | Open | — | — |
+| BUG-026 | 3 | Low | code-reviewer | `DispatchSettings` test-override setters (rules, tokens, webhook) have no test-only guard, so production code could swap live rules or tokens | Open | — | — |
 
 ## Spec gaps (decided, not defects)
 
